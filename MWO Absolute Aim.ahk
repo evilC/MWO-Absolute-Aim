@@ -50,6 +50,10 @@ SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
 #include <CGdipSnapshot>
 
 ADHD := new ADHDLib()
+ADHD.config_size(350,200)
+ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
+
+axis_list_ahk := Array("X","Y","Z","R","U","V")
 
 GUI_WIDTH := 200
 SNAPSHOT_WIDTH := 100
@@ -63,36 +67,41 @@ default_high_thresh := 12314
 ;default_low_thresh := 0
 ;default_high_thresh := 0
 
-Gui, 1:New
-Gui, 1:Default
-Gui, 1:Add, Text, xm ym Section, Low Threshold
-Gui, 1:Add, Edit, vLowThresh gThreshChanged w50 ys-3, % default_low_thresh
-Gui, 1:Add, Text, xm Section, High Threshold
-Gui, 1:Add, Edit, vHighThresh gThreshChanged w50 ys-3, % default_high_thresh
+ADHD.init()
+ADHD.create_gui()
+
+;Gui, 1:New
+;Gui, 1:Default
+Gui, Tab, 1
+Gui, Add, Text, xm y40 Section, Low Threshold
+Gui, Add, Edit, vLowThresh gThreshChanged w50 ys-3, % default_low_thresh
+Gui, Add, Text, ys Section, High Threshold
+Gui, Add, Edit, vHighThresh gThreshChanged w50 ys-3, % default_high_thresh
 ;Gui, 1:Add, Text, xm Section, Small Step Size
 ;Gui, 1:Add, Edit, vSmallStep gStepSizeChanged w50 ys-3, 1
 ;Gui, 1:Add, Text, xm Section, High Threshold
 ;Gui, 1:Add, Edit, vBigStep gStepSizeChanged w50 ys-3, 100
 ;Gui, 1:Add, CheckBox, xm vCalibrationMode gCalibrationModeChanged, Calibration Mode
-Gui, 1:Add, Text, xm Section, Joystick ID
-Gui, 1:Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
-Gui, 1:Add, Text, xm Section, Joystick X Axis
-Gui, 1:Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
+Gui, Add, Text, xm yp+30 Section, Joystick ID
+Gui, Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
+Gui, Add, Text, ys Section, X Axis
+Gui, Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
+Gui, Add, Text, ys Section, Y Axis
+Gui, Add, DDL, vStickYAxis gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8
 ;Gui, 1:Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
 /*
 Gui, 1:Add, Text, xm Section, Hotkeys:`nF11: Auto-Calibrate Deadzone`nF12: Auto-Calibrate twist limits
 Gui, 1:Add, GroupBox, xm Section w%GUI_WIDTH% h200, Auto-Calibrate
 Gui, 1:Add, Button, xs+10 ys+20 gAutoDeadzone, Auto Deadzone
 */
-Gui, 1:Show, % "w" GUI_WIDTH + 20
+;Gui, 1:Show, % "w" GUI_WIDTH + 20
+
+ADHD.finish_startup()
 
 Gui, 2:New
 Gui, 2:Add, Text, 0xE xm Section w%SNAPSHOT_WIDTH% h%SNAPSHOT_HEIGHT% hwndSnapshotPreview
 Gui, 2:Add, Edit, xm Section w%SNAPSHOT_WIDTH% center disabled vAngle
 Gui, 2:Add, Text, xm Section w%SNAPSHOT_WIDTH% center R3 vSnapshotDebug
-
-
-axis_list_ahk := Array("X","Y","Z","R","U","V")
 
 ax := 0
 
@@ -203,8 +212,13 @@ AutoDeadzone(){
 	c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
 	c1_rgb := diff_snap.ToRGB(c1)
 	
+	found := 0
 	ax := 0
 	Loop 16384 {
+		if (!WinActive("ahk_class " mwo_class)){
+			soundbeep, 500
+			return
+		}
 		ax := A_Index
 		SetAxis(ax, 1)
 		;inc_ang(1)
@@ -228,13 +242,14 @@ AutoDeadzone(){
 		;tooltip % ax " - " res
 
 		if (!res){
+			found := 1
 			break
 		}
 
 		;Sleep 10
 	}
 	
-	if (ax){
+	if (found){
 		GuiControl, , LowThresh, % ax
 		Gosub, ThreshChanged
 		Soundbeep
@@ -330,15 +345,6 @@ show_ang(){
 	global ax
 	;tooltip % ax
 }
-
-;F5: Calibrate
-~f5::
-	AutoDeadzone()
-	return
-
-~f5 up::
-	return
-
 
 /*
 ;F5: Calibrate
