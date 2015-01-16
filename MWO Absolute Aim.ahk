@@ -49,18 +49,19 @@ SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
 #include <CvJoyInterface>
 #include <CGdipSnapshot>
 
-ADHD := new ADHDLib()
-ADHD.config_size(350,200)
-ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
-
-axis_list_ahk := Array("X","Y","Z","R","U","V")
-
-GUI_WIDTH := 200
+GUI_WIDTH := 350
 SNAPSHOT_WIDTH := 100
 SNAPSHOT_HEIGHT := 100
 
 mwo_class := "CryENGINE"
 starting_up := 1
+
+ADHD := new ADHDLib()
+ADHD.config_size(GUI_WIDTH + 20, 200)
+ADHD.config_event("option_changed", "option_changed_hook")
+ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
+
+axis_list_ahk := Array("X","Y","Z","R","U","V")
 
 default_low_thresh := 2460
 default_high_thresh := 12314
@@ -73,21 +74,33 @@ ADHD.create_gui()
 ;Gui, 1:New
 ;Gui, 1:Default
 Gui, Tab, 1
-Gui, Add, Text, xm y40 Section, Low Threshold
-Gui, Add, Edit, vLowThresh gThreshChanged w50 ys-3, % default_low_thresh
+Gui, Add, GroupBox, xm y40 w%GUI_WIDTH% R1, X Axis
+Gui, Add, Text, xm+10 yp+15 Section, Low Threshold
+ADHD.gui_add("Edit", "LowThreshX", "w50 h20 ys-3", 1, 1)
 Gui, Add, Text, ys Section, High Threshold
-Gui, Add, Edit, vHighThresh gThreshChanged w50 ys-3, % default_high_thresh
+ADHD.gui_add("Edit", "HighThreshX", "w50 h20 ys-3", 16384, 16384)
+
+Gui, Add, GroupBox, xm yp+30 w%GUI_WIDTH% R1, Y Axis
+Gui, Add, Text, xm+10 yp+15 Section, Low Threshold
+ADHD.gui_add("Edit", "LowThreshY", "w50 h20 ys-3", 1, 1)
+Gui, Add, Text, ys Section, High Threshold
+ADHD.gui_add("Edit", "HighThreshY", "w50 h20 ys-3", 16384, 16384)
+
 ;Gui, 1:Add, Text, xm Section, Small Step Size
 ;Gui, 1:Add, Edit, vSmallStep gStepSizeChanged w50 ys-3, 1
 ;Gui, 1:Add, Text, xm Section, High Threshold
 ;Gui, 1:Add, Edit, vBigStep gStepSizeChanged w50 ys-3, 100
 ;Gui, 1:Add, CheckBox, xm vCalibrationMode gCalibrationModeChanged, Calibration Mode
-Gui, Add, Text, xm yp+30 Section, Joystick ID
-Gui, Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
+Gui, Add, Text, xm yp+40 Section, Joystick ID
+;Gui, Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
+ADHD.gui_add("DropDownList", "StickID", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16", "2")
+
 Gui, Add, Text, ys Section, X Axis
-Gui, Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
+;Gui, Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
+ADHD.gui_add("DropDownList", "StickXAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "1")
 Gui, Add, Text, ys Section, Y Axis
-Gui, Add, DDL, vStickYAxis gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8
+;Gui, Add, DDL, vStickYAxis gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8
+ADHD.gui_add("DropDownList", "StickYAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "2")
 ;Gui, 1:Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
 /*
 Gui, 1:Add, Text, xm Section, Hotkeys:`nF11: Auto-Calibrate Deadzone`nF12: Auto-Calibrate twist limits
@@ -104,6 +117,7 @@ Gui, 2:Add, Edit, xm Section w%SNAPSHOT_WIDTH% center disabled vAngle
 Gui, 2:Add, Text, xm Section w%SNAPSHOT_WIDTH% center R3 vSnapshotDebug
 
 ax := 0
+joy_on := 1
 
 ; Create an object from vJoy Interface Class.
 vJoyInterface := new CvJoyInterface()
@@ -116,11 +130,6 @@ if (!vJoyInterface.vJoyEnabled()){
 }
 
 myStick := vJoyInterface.Devices[1]
-
-Gosub StepSizeChanged
-Gosub StickChanged
-Gosub ThreshChanged
-Gosub CalibrationModeChanged
 
 starting_up := 0
 
@@ -143,7 +152,7 @@ MainLoop(){
 	Global conv_ratio
 	
 	; GuiControls
-	Global LowThresh
+	Global LowThreshX
 	
 	Loop {
 		if (joy_on){
@@ -158,7 +167,7 @@ MainLoop(){
 			} else {
 				sgn := 0
 			}
-			out := ((abs(ax) * conv_ratio) + LowThresh) * sgn
+			out := ((abs(ax) * conv_ratio) + LowThreshX) * sgn
 			
 			; move off-center
 			out += 16384
@@ -173,7 +182,7 @@ AutoDeadzone(){
 	Global mwo_class
 	Global joy_on
 	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
-	Global SnapshotPreview, Angle, SnapshotDebug, LowThresh
+	Global SnapshotPreview, Angle, SnapshotDebug, LowThreshX
 	
 	WinGet, mwo_hwnd, ID, ahk_class %mwo_class%
 	if (!mwo_hwnd){
@@ -202,9 +211,11 @@ AutoDeadzone(){
 	; Do the calibration
 	SoundBeep, 500, 250
 	
-	center_stick()
+	ax := 0
+	SetAxis(ax,1)
+
 	Send {c}
-	Sleep 2000
+	Sleep 2500
 	SoundBeep, 1000, 250
 
 	base_snap.TakeSnapshot()
@@ -213,7 +224,7 @@ AutoDeadzone(){
 	c1_rgb := diff_snap.ToRGB(c1)
 	
 	found := 0
-	ax := 0
+	
 	Loop 16384 {
 		if (!WinActive("ahk_class " mwo_class)){
 			soundbeep, 500
@@ -250,14 +261,26 @@ AutoDeadzone(){
 	}
 	
 	if (found){
-		GuiControl, , LowThresh, % ax
-		Gosub, ThreshChanged
+		GuiControl, , LowThreshX, % ax
 		Soundbeep
 	}
 	
 	Gui, 2:Hide
 	joy_on := 1
 	return
+
+}
+
+option_changed_hook(){
+	Global conv_ratio
+	Global LowThreshX, HighThreshX 
+	Global LowThreshY, HighThreshXY
+	Global StickID, StickXAxis, StickYAxis
+	Global axis_list_ahk
+	Global joy_x_str
+	
+	conv_ratio := ( HighThreshX - LowThreshX) / 16384
+	joy_x_str := StickID "Joy" axis_list_ahk[StickXAxis]
 
 }
 
@@ -269,53 +292,6 @@ SetAxis(val, axis){
 AutoDeadzone:
 	AutoDeadzone()
 	return
-
-ThreshChanged:
-	;soundbeep
-	Gui, 1:Submit, NoHide
-	conv_ratio := ( HighThresh - LowThresh) / 16384
-	return
-
-CalibrationModeChanged:
-	if (!starting_up){
-		if (joy_on){
-			soundbeep, 1000, 500
-		} else {
-			soundbeep 500, 500
-		}
-	}
-	Gui, 1:Submit, NoHide
-	joy_on := !CalibrationMode
-	if (!joy_on){
-		GoSub, CenterStick
-	}
-	return
-
-StickChanged:
-	;soundbeep
-	Gui, 1:Submit, NoHide
-	joy_x_str := StickID "Joy" axis_list_ahk[StickXAxis]
-	return
-	
-StepSizeChanged:
-	Gui, 1:Submit, NoHide
-	return
-
-set_ratio(){
-	global ax, myStick, low_thresh, high_thresh
-	global conv_ratio
-	
-	conv_ratio := ( high_thresh - low_thresh) / 16384
-	;msgbox % conv_ratio
-}
-
-center_stick(){
-	global CalibrationMode, ax, myStick
-	if (CalibrationMode){
-		ax := 0
-		myStick.SetAxisByIndex(16384, 1)
-	}
-}
 
 inc_ang(amt){
 	global ax
@@ -345,90 +321,5 @@ show_ang(){
 	global ax
 	;tooltip % ax
 }
-
-/*
-;F5: Calibrate
-~f5::
-	GuiControl, , CalibrationMode, % !CalibrationMode
-	Gosub, CalibrationModeChanged
-	return
-
-~f5 up::
-	return
-
-
-
-; F6: Set Low Threshold
-~F6::
-	if (CalibrationMode){
-		SoundBeep
-		GuiControl,, LowThresh, % abs(ax)
-	}
-	return
-
-
-~F6 up::
-	return
-
-
-; F7: Set High Threshold
-~F7::
-	if (CalibrationMode){
-		SoundBeep
-		GuiControl,, HighThresh, % abs(ax)
-	}
-	return
-
-~F7 up::
-	return
-
-; F8: Center
-~F8::
-*/
-CenterStick:
-	center_stick()
-	return
-
-~F8 up::
-	return
-
-/*
-; F9: Small Step Down
-~F9::
-	if (CalibrationMode){
-		dec_ang(SmallStep)
-	}
-	return
-
-~F9 up::
-	return
-
-; F19: Small Step Up
-~F10::
-	if (CalibrationMode){
-		inc_ang(SmallStep)
-	}
-	Return
-
-~F10 up::
-	Return
-
-; F11: Big Step Down
-~F11::
-	if (CalibrationMode){
-		dec_ang(BigStep)
-	}
-	return
-
-~f11 up::
-	return
-
-; F12: Big Step Up
-~F12::
-	if (CalibrationMode){
-		inc_ang(BigStep)
-	}
-	return
-*/
 
 #include <ADHDlib>
