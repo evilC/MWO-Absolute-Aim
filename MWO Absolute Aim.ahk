@@ -11,6 +11,7 @@ EXE version or .ahk (source) version of script:
 .ahk (source) - ie not the EXE version:
    AHK from http://ahkscript.org. !!! NOT autohotkey.com !!!
    AHK-CvJoyInterface.ahk from here: https://github.com/evilC/AHK-CvJoyInterface
+   ADHD from https://github.com/evilC/ADHD-AHK-Dynamic-Hotkeys-for-Dummies
 
 MWO Setup:
 	One Time
@@ -20,29 +21,32 @@ MWO Setup:
 		X-AXIS SENSITIVITY, Y-AXIS SENSITIVITY and DEADZONE
 		DO NOT attempt to set deadzone to 0! It goes mental!
 	3) Bind vJoy axis 1 to TORSO TWIST in MWO:
-		Start the script, enable calib mode, tab into MWO settings menu.
+		Start the script, go into the BINDINGS tab and bind a KEYBOARD KEY to "MWO Bind X" and "MWO Bind Y".
 		Double click TORSO TWIST in the JOYSTICK column
-		Spam F11 or F12 until it binds.
-		F11 / F12 moves the virtual stick without you having to move the physical stick...
+		Hit the key you bound to "MWO Bind X"
+		This moves the virtual stick without you having to move the physical stick...
 		... so we can be sure MWO binds to the virtual stick.
-	
-	Per-Run ( These settings will become persistent if I move past proof-of-concept stage)
-	=======
-	1) Configure inputs
+		Now repeat for the PITCH setting.
+	3) Configure inputs
 		In the script, select the ID and axis number of the stick you wish to use as input.
-	2) Set Low and High Threshold numbers.
-		You need two numbers for the low and high threshold.
-		If you have calibrated before and have good numbers, you can just plug them right in and go.
-		If not, here is how to calibrate:
-		A) Before you start, it seems to not matter if in windowed mode or fullscreen (same values)
-			So ALT+ENTER to go windowed to be able to see script GUI if you like.
-		B) Enter calibration mode in script (F5 or tick UI checkbox)
-		C) Use F11/F12 to find roughly where view starts moving. Once you find it, Switch to F9/F10 to precisely locate.
-			Once you have exact edge (first F10 push where screen moves), Hit F6 to set low threshold.
-		D) Use same process - F11/F12 then F9/F10 to find rough high edge where view stops moving.
-			Once you find high edge, hit F7
-		E) Hit F5 to exit calibration mode and test.
 		
+	Per-Mech etc
+	============
+	Low Threshold (Deadzone) is probably the same for all mechs.
+	However, the High Threshold may well vary from mech to mech.
+	You can use the PROFIlES tab to add profiles if you need different setups for different situations.
+	
+	Calibration process:
+	1) Make sure MWO is running in FULL WINDOW mode, and at the best resolution you possibly can (Lower resolutions = bad pixel detection)
+	Make sure you bind a key on the BINDINGS tab to AUTO DEADZONE and AUTO TWIST LIMIT
+	
+	2) Make sure ARM LOCK is set to OFF! Even in a mech with no arm movement in any direction!
+	AUTO DEADZONE will set the lower threshold, AUTO TWIST LIMIT will set the high threshold.
+	
+	3) hit the hotkey for AUTO DEADZONE or AUTO TWIST LIMIT and sit back.
+		A window will appear at the bottom right of your screen with a snapshot view of what the macro is looking at - you can watch it work ;)
+		DO NOT touch the mouse - this will abort.
+	
 */
 #SingleInstance, force
 SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
@@ -57,10 +61,14 @@ mwo_class := "CryENGINE"
 starting_up := 1
 
 ADHD := new ADHDLib()
-ADHD.config_size(GUI_WIDTH + 20, 300)
+ADHD.config_about({name: "MWO Absolute Aim", version: "1.0", author: "evilC", link: "<a href=""https://github.com/evilC/MWO-Absolute-Aim"">Homepage</a> / <a href=""http://mwomercs.com/forums/topic/186302"">Forum Thread</a>"})
+
+ADHD.config_size(GUI_WIDTH + 20, 240)
 ADHD.config_event("option_changed", "option_changed_hook")
 ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
 ADHD.config_hotkey_add({uiname: "Auto Twist Limit", subroutine: "AutoTwistLimit"})
+ADHD.config_hotkey_add({uiname: "MWO Bind X", subroutine: "MWOBindX"})
+ADHD.config_hotkey_add({uiname: "MWO Bind Y", subroutine: "MWOBindY"})
 
 axis_list_ahk := Array("X","Y","Z","R","U","V")
 
@@ -87,22 +95,13 @@ ADHD.gui_add("Edit", "LowThreshY", "w50 h20 ys-3", 1, 1)
 Gui, Add, Text, ys Section, High Threshold
 ADHD.gui_add("Edit", "HighThreshY", "w50 h20 ys-3", 16384, 16384)
 
-;Gui, 1:Add, Text, xm Section, Small Step Size
-;Gui, 1:Add, Edit, vSmallStep gStepSizeChanged w50 ys-3, 1
-;Gui, 1:Add, Text, xm Section, High Threshold
-;Gui, 1:Add, Edit, vBigStep gStepSizeChanged w50 ys-3, 100
-;Gui, 1:Add, CheckBox, xm vCalibrationMode gCalibrationModeChanged, Calibration Mode
 Gui, Add, Text, xm yp+40 Section, Joystick ID
-;Gui, Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
 ADHD.gui_add("DropDownList", "StickID", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16", "2")
 
 Gui, Add, Text, ys Section, X Axis
-;Gui, Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
 ADHD.gui_add("DropDownList", "StickXAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "1")
 Gui, Add, Text, ys Section, Y Axis
-;Gui, Add, DDL, vStickYAxis gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8
 ADHD.gui_add("DropDownList", "StickYAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "2")
-;Gui, 1:Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
 Gui, Add, Text, xm yp+40 Section, Auto Calibrate Start
 ADHD.gui_add("Edit", "AutoCalibStart", "w50 h20 ys-3", 0, 0)
 
@@ -274,8 +273,6 @@ AutoCalibrate(hilo, axis){
 			res := diff_snap.Compare(c1_rgb, c2_rgb, tol)
 			while (res && (reticule < reticule_max)){
 				reticule += step_size
-				;base_snap := new CGdipSnapshot(x,y,SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
-				;base_snap.Coords := {x: x, y: y, w: SNAPSHOT_WIDTH, h:SNAPSHOT_HEIGHT }
 				if (axis == 1){
 					base_snap.Coords.x := reticule
 				} else {
@@ -318,9 +315,6 @@ AutoCalibrate(hilo, axis){
 		}
 		SetAxis(ax, axis)
 		
-		;inc_ang(1)
-		;Sleep 10
-		
 		diff_snap.TakeSnapshot()
 		diff_snap.ShowSnapshot(SnapshotPreview)
 		
@@ -332,8 +326,6 @@ AutoCalibrate(hilo, axis){
 		Gui, 2:Default
 		GuiControl, , Angle, % ax
 		GuiControl, , SnapshotDebug, % "r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nr:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
-		;GuiControl, +c%c2%, BaseCol
-		;GuiControl, , BaseCol, #
 		Gui, 1:Default
 		
 		;tooltip % ax " - " res
@@ -387,6 +379,18 @@ SetAxis(val, axis){
 	myStick.SetAxisByIndex(val + 16384, axis)
 }
 
+MWOBindX:
+	SetAxis(16384,1)
+	Sleep 250
+	SetAxis(0,1)
+	return
+
+MWOBindY:
+	SetAxis(16384,2)
+	Sleep 250
+	SetAxis(0,2)
+	return
+
 AutoDeadzone:
 	;AutoCalibrate(0,1)
 	AutoCalibrate(0,2)
@@ -396,34 +400,5 @@ AutoTwistLimit:
 	;AutoCalibrate(1,1)
 	AutoCalibrate(1,2)
 	return
-
-inc_ang(amt){
-	global ax
-	global myStick
-	ax += amt
-	if (ax > 16384){
-		ax := 16384
-	}
-	out := ax + 16384
-	myStick.SetAxisByIndex(out, 1)
-	show_ang()
-}
-
-dec_ang(amt){
-	global ax
-	global myStick
-	ax -= amt
-	if (ax < -16384){
-		ax := -16384
-	}
-	out := ax + 16384
-	myStick.SetAxisByIndex(out, 1)
-	show_ang()
-}
-
-show_ang(){
-	global ax
-	;tooltip % ax
-}
 
 #include <ADHDlib>
