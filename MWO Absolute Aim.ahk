@@ -49,11 +49,12 @@ SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
 #include <CvJoyInterface>
 #include <CGdipSnapshot>
 
+ADHD := new ADHDLib()
+
 GUI_WIDTH := 200
 SNAPSHOT_WIDTH := 100
 SNAPSHOT_HEIGHT := 100
 
-run_as_admin()
 mwo_class := "CryENGINE"
 starting_up := 1
 
@@ -330,7 +331,16 @@ show_ang(){
 	;tooltip % ax
 }
 
+;F5: Calibrate
+~f5::
+	AutoDeadzone()
+	return
 
+~f5 up::
+	return
+
+
+/*
 ;F5: Calibrate
 ~f5::
 	GuiControl, , CalibrationMode, % !CalibrationMode
@@ -368,6 +378,7 @@ show_ang(){
 
 ; F8: Center
 ~F8::
+*/
 CenterStick:
 	center_stick()
 	return
@@ -375,6 +386,7 @@ CenterStick:
 ~F8 up::
 	return
 
+/*
 ; F9: Small Step Down
 ~F9::
 	if (CalibrationMode){
@@ -411,17 +423,6 @@ CenterStick:
 		inc_ang(BigStep)
 	}
 	return
+*/
 
-GuiClose:
-	ExitApp
-	
-run_as_admin(){
-	Global 0
-	IfEqual, A_IsAdmin, 1, Return 0
-	Loop, %0% {
-		params .= A_Space . %A_Index%
-	}
-	DllCall("shell32\ShellExecute" (A_IsUnicode ? "":"A"),uint,0,str,"RunAs",str,(A_IsCompiled ? A_ScriptFullPath
-		: A_AhkPath),str,(A_IsCompiled ? "": """" . A_ScriptFullPath . """" . A_Space) params,str,A_WorkingDir,int,1)
-	ExitApp
-}
+#include <ADHDlib>
