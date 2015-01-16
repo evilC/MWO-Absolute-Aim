@@ -57,9 +57,10 @@ mwo_class := "CryENGINE"
 starting_up := 1
 
 ADHD := new ADHDLib()
-ADHD.config_size(GUI_WIDTH + 20, 200)
+ADHD.config_size(GUI_WIDTH + 20, 300)
 ADHD.config_event("option_changed", "option_changed_hook")
 ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
+ADHD.config_hotkey_add({uiname: "Auto Twist Limit", subroutine: "AutoTwistLimit"})
 
 axis_list_ahk := Array("X","Y","Z","R","U","V")
 
@@ -102,12 +103,8 @@ Gui, Add, Text, ys Section, Y Axis
 ;Gui, Add, DDL, vStickYAxis gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8
 ADHD.gui_add("DropDownList", "StickYAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "2")
 ;Gui, 1:Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
-/*
-Gui, 1:Add, Text, xm Section, Hotkeys:`nF11: Auto-Calibrate Deadzone`nF12: Auto-Calibrate twist limits
-Gui, 1:Add, GroupBox, xm Section w%GUI_WIDTH% h200, Auto-Calibrate
-Gui, 1:Add, Button, xs+10 ys+20 gAutoDeadzone, Auto Deadzone
-*/
-;Gui, 1:Show, % "w" GUI_WIDTH + 20
+Gui, Add, Text, xm yp+40 Section, Auto Calibrate Start
+ADHD.gui_add("Edit", "AutoCalibStart", "w50 h20 ys-3", 0, 0)
 
 ADHD.finish_startup()
 
@@ -178,12 +175,15 @@ MainLoop(){
 	}
 }
 
-AutoDeadzone(){
+AutoCalibrate(hilo, axis){
 	Global mwo_class
 	Global joy_on
 	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
-	Global SnapshotPreview, Angle, SnapshotDebug, LowThreshX
+	Global SnapshotPreview, Angle, SnapshotDebug, AutoCalibStart, SnapshotDebug
+	;Global LowThreshX
 	
+	Gui, 2:Default
+
 	WinGet, mwo_hwnd, ID, ahk_class %mwo_class%
 	if (!mwo_hwnd){
 		msgbox MWO is not running!
@@ -191,6 +191,7 @@ AutoDeadzone(){
 	}
 
 	joy_on := 0
+	
 	; Find resolution
 	WinGetPos , X, Y, Width, Height, ahk_class %mwo_class%
 
@@ -211,27 +212,75 @@ AutoDeadzone(){
 	; Do the calibration
 	SoundBeep, 500, 250
 	
-	ax := 0
-	SetAxis(ax,1)
+	max := 16384 - AutoCalibStart
+	
+	if (hilo){
+		; High - twist limits
+		ax := max
+		SetAxis(ax,axis)
 
-	Send {c}
-	Sleep 2500
-	SoundBeep, 1000, 250
+		Sleep 2500
+		SoundBeep, 1000, 250
+
+	} else {
+		; Low - deadzone
+		ax := 0
+		SetAxis(ax,axis)
+
+		Send {c}
+		Sleep 2500
+		SoundBeep, 1000, 250
+	}
 
 	base_snap.TakeSnapshot()
 	base_snap.TakeSnapshot()
 	c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
 	c1_rgb := diff_snap.ToRGB(c1)
-	
+	c2_rgb := {r: 205, g: 177, b: 102}
+	tol := 50
+	step_size := 1
+
+	if (hilo){
+		if (diff_snap.Compare(c1_rgb, c2_rgb, tol)){
+			x := (width / 2) - (SNAPSHOT_WIDTH / 2)
+			y := (height / 2) - (SNAPSHOT_HEIGHT / 2)
+			res := diff_snap.Compare(c1_rgb, c2_rgb, tol)
+			while (res && (x < Width)){
+				x += step_size
+				;base_snap := new CGdipSnapshot(x,y,SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
+				base_snap.Coords := {x: x, y: y, w: SNAPSHOT_WIDTH, h:SNAPSHOT_HEIGHT }
+				base_snap.TakeSnapshot()
+				base_snap.ShowSnapshot(SnapshotPreview)
+				
+				c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+				c1_rgb := base_snap.ToRGB(c1)
+				
+				res := base_snap.Compare(c1_rgb, c2_rgb, tol)
+				GuiControl, , Angle, % round(x)
+				GuiControl, , SnapshotDebug, % "r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nr:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
+				if (!res){
+					x -= step_size
+					diff_snap.Coords := {x: x, y: y, w: SNAPSHOT_WIDTH, h:SNAPSHOT_HEIGHT }
+				}
+			}
+		}
+	}
+
 	found := 0
-	
-	Loop 16384 {
+
+
+	Loop % max {
 		if (!WinActive("ahk_class " mwo_class)){
 			soundbeep, 500
 			return
 		}
-		ax := A_Index
-		SetAxis(ax, 1)
+		if (hilo){
+			ax := max - A_Index
+		} else {
+			ax := AutoCalibStart + A_Index
+		}
+		SetAxis(ax, axis)
+		
 		;inc_ang(1)
 		;Sleep 10
 		
@@ -256,12 +305,14 @@ AutoDeadzone(){
 			found := 1
 			break
 		}
-
-		;Sleep 10
 	}
-	
+
 	if (found){
-		GuiControl, , LowThreshX, % ax
+		if (hilo){
+			GuiControl, , ThreshX, % ax
+		} else {
+			GuiControl, , LowThreshX, % ax
+		}
 		Soundbeep
 	}
 	
@@ -290,7 +341,12 @@ SetAxis(val, axis){
 }
 
 AutoDeadzone:
-	AutoDeadzone()
+	AutoCalibrate(0,1)
+	;AutoCalibrate(0,2)
+	return
+
+AutoTwistLimit:
+	AutoCalibrate(1,1)
 	return
 
 inc_ang(amt){
