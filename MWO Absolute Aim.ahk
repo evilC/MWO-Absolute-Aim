@@ -143,33 +143,48 @@ MainLoop(){
 	
 	; Nasty globals - remove
 	Global ax
-	Global joy_x_str
+	Global joy_x_str, joy_y_str
 	
 	; Excusable globals
-	Global conv_ratio
+	Global conv_ratio_x, conv_ratio_y
 	
 	; GuiControls
-	Global LowThreshX
+	Global LowThreshX, LowThreshY, HighThreshX, HighThreshY
 	
 	Loop {
 		if (joy_on){
-			ax := GetKeyState(joy_x_str, "P")
+			ax_x := GetKeyState(joy_x_str, "P")
+			ax_y := GetKeyState(joy_y_str, "P")
 			; ax is 0-100
-			ax *= 327.68
-			ax -= 16384
-			if (ax > 0){
-				sgn := 1
-			} else if (ax < 0){
-				sgn := -1
-			} else {
-				sgn := 0
-			}
-			out := ((abs(ax) * conv_ratio) + LowThreshX) * sgn
+			ax_x *= 327.68
+			ax_y *= 327.68
 			
+			ax_x -= 16384
+			ax_y -= 16384
+			
+			if (ax_x > 0){
+				sgn_x := 1
+			} else if (ax_x < 0){
+				sgn_x := -1
+			} else {
+				sgn_x := 0
+			}
+			
+			if (ax_y > 0){
+				sgn_y := 1
+			} else if (ax_y < 0){
+				sgn_y := -1
+			} else {
+				sgn_y := 0
+			}
+			out_x := ((abs(ax_x) * conv_ratio_x) + LowThreshX) * sgn_x
+			out_y := ((abs(ax_y) * conv_ratio_y) + LowThreshY) * sgn_y
 			; move off-center
-			out += 16384
-			;tooltip % "Joy: " joy_x_str "`nsgn: " sgn "`nratio: " conv_ratio "`nin: " ax "`nout: " out
-			myStick.SetAxisByIndex(out, 1)
+			out_x += 16384
+			out_y += 16384
+			;tooltip % "X: " joy_x_str "`nsgn: " sgn_x "`nratio: " conv_ratio_x "`nin: " ax_x "`nout: " out_x "`n`nY: " joy_y_str "`nsgn: " sgn_y "`nratio: " conv_ratio_y "`nin: " ax_y "`nout: " out_y
+			myStick.SetAxisByIndex(out_x, 1)
+			myStick.SetAxisByIndex(out_y, 2)
 		}
 		Sleep 20
 	}
@@ -216,7 +231,11 @@ AutoCalibrate(hilo, axis){
 	
 	if (hilo){
 		; High - twist limits
-		ax := max
+		if (axis = 1){
+			ax := max
+		} else {
+			ax := max * -1
+		}
 		SetAxis(ax,axis)
 
 		Sleep 2500
@@ -239,16 +258,29 @@ AutoCalibrate(hilo, axis){
 	c2_rgb := {r: 205, g: 177, b: 102}
 	tol := 50
 	step_size := 1
+	x := (width / 2) - (SNAPSHOT_WIDTH / 2)
+	y := (height / 2) - (SNAPSHOT_HEIGHT / 2)
 
 	if (hilo){
+		if (axis){
+			; x
+			reticule := x
+			reticule_max := SNAPSHOT_WIDTH
+		} else {
+			reticule := y
+			reticule_max := SNAPSHOT_HEIGHT
+		}
 		if (diff_snap.Compare(c1_rgb, c2_rgb, tol)){
-			x := (width / 2) - (SNAPSHOT_WIDTH / 2)
-			y := (height / 2) - (SNAPSHOT_HEIGHT / 2)
 			res := diff_snap.Compare(c1_rgb, c2_rgb, tol)
-			while (res && (x < Width)){
-				x += step_size
+			while (res && (reticule < reticule_max)){
+				reticule += step_size
 				;base_snap := new CGdipSnapshot(x,y,SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
-				base_snap.Coords := {x: x, y: y, w: SNAPSHOT_WIDTH, h:SNAPSHOT_HEIGHT }
+				;base_snap.Coords := {x: x, y: y, w: SNAPSHOT_WIDTH, h:SNAPSHOT_HEIGHT }
+				if (axis == 1){
+					base_snap.Coords.x := reticule
+				} else {
+					base_snap.Coords.y := reticule
+				}
 				base_snap.TakeSnapshot()
 				base_snap.ShowSnapshot(SnapshotPreview)
 				
@@ -259,7 +291,12 @@ AutoCalibrate(hilo, axis){
 				GuiControl, , Angle, % round(x)
 				GuiControl, , SnapshotDebug, % "r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nr:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
 				if (!res){
-					x -= step_size
+					reticule -= step_size
+					if (axis == 1){
+						x := reticule
+					} else {
+						y := reticule
+					}
 					diff_snap.Coords := {x: x, y: y, w: SNAPSHOT_WIDTH, h:SNAPSHOT_HEIGHT }
 				}
 			}
@@ -309,9 +346,17 @@ AutoCalibrate(hilo, axis){
 
 	if (found){
 		if (hilo){
-			GuiControl, , ThreshX, % ax
+			if (axis == 1){
+				GuiControl, , HighThreshX, % ax
+			} else {
+				GuiControl, , HighThreshY, % ax
+			}
 		} else {
-			GuiControl, , LowThreshX, % ax
+			if (axis == 1){
+				GuiControl, , LowThreshX, % ax
+			} else {
+				GuiControl, , LowThreshY, % ax
+			}
 		}
 		Soundbeep
 	}
@@ -323,15 +368,17 @@ AutoCalibrate(hilo, axis){
 }
 
 option_changed_hook(){
-	Global conv_ratio
+	Global conv_ratio_x, conv_ratio_y
 	Global LowThreshX, HighThreshX 
-	Global LowThreshY, HighThreshXY
+	Global LowThreshY, HighThreshY
 	Global StickID, StickXAxis, StickYAxis
 	Global axis_list_ahk
-	Global joy_x_str
+	Global joy_x_str, joy_y_str
 	
-	conv_ratio := ( HighThreshX - LowThreshX) / 16384
+	conv_ratio_x := ( HighThreshX - LowThreshX) / 16384
+	conv_ratio_y := ( HighThreshY - LowThreshY) / 16384
 	joy_x_str := StickID "Joy" axis_list_ahk[StickXAxis]
+	joy_y_str := StickID "Joy" axis_list_ahk[StickYAxis]
 
 }
 
@@ -341,12 +388,13 @@ SetAxis(val, axis){
 }
 
 AutoDeadzone:
-	AutoCalibrate(0,1)
-	;AutoCalibrate(0,2)
+	;AutoCalibrate(0,1)
+	AutoCalibrate(0,2)
 	return
 
 AutoTwistLimit:
-	AutoCalibrate(1,1)
+	;AutoCalibrate(1,1)
+	AutoCalibrate(1,2)
 	return
 
 inc_ang(amt){
