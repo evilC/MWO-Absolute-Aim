@@ -49,6 +49,7 @@ SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
 #include <CvJoyInterface>
 #include <CGdipSnapshot>
 
+GUI_WIDTH := 200
 SNAPSHOT_WIDTH := 100
 SNAPSHOT_HEIGHT := 100
 
@@ -67,23 +68,28 @@ Gui, 1:Add, Text, xm ym Section, Low Threshold
 Gui, 1:Add, Edit, vLowThresh gThreshChanged w50 ys-3, % default_low_thresh
 Gui, 1:Add, Text, xm Section, High Threshold
 Gui, 1:Add, Edit, vHighThresh gThreshChanged w50 ys-3, % default_high_thresh
-Gui, 1:Add, Text, xm Section, Small Step Size
-Gui, 1:Add, Edit, vSmallStep gStepSizeChanged w50 ys-3, 1
-Gui, 1:Add, Text, xm Section, High Threshold
-Gui, 1:Add, Edit, vBigStep gStepSizeChanged w50 ys-3, 100
-Gui, 1:Add, CheckBox, xm vCalibrationMode gCalibrationModeChanged, Calibration Mode
+;Gui, 1:Add, Text, xm Section, Small Step Size
+;Gui, 1:Add, Edit, vSmallStep gStepSizeChanged w50 ys-3, 1
+;Gui, 1:Add, Text, xm Section, High Threshold
+;Gui, 1:Add, Edit, vBigStep gStepSizeChanged w50 ys-3, 100
+;Gui, 1:Add, CheckBox, xm vCalibrationMode gCalibrationModeChanged, Calibration Mode
 Gui, 1:Add, Text, xm Section, Joystick ID
 Gui, 1:Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
 Gui, 1:Add, Text, xm Section, Joystick X Axis
 Gui, 1:Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
-Gui, 1:Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
-Gui, 1:Add, Button, xm Section gAutoCalibrate, Auto Calibrate
-Gui, 1:Show
+;Gui, 1:Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
+/*
+Gui, 1:Add, Text, xm Section, Hotkeys:`nF11: Auto-Calibrate Deadzone`nF12: Auto-Calibrate twist limits
+Gui, 1:Add, GroupBox, xm Section w%GUI_WIDTH% h200, Auto-Calibrate
+Gui, 1:Add, Button, xs+10 ys+20 gAutoDeadzone, Auto Deadzone
+*/
+Gui, 1:Show, % "w" GUI_WIDTH + 20
 
 Gui, 2:New
 Gui, 2:Add, Text, 0xE xm Section w%SNAPSHOT_WIDTH% h%SNAPSHOT_HEIGHT% hwndSnapshotPreview
 Gui, 2:Add, Edit, xm Section w%SNAPSHOT_WIDTH% center disabled vAngle
 Gui, 2:Add, Text, xm Section w%SNAPSHOT_WIDTH% center R3 vSnapshotDebug
+
 
 axis_list_ahk := Array("X","Y","Z","R","U","V")
 
@@ -153,7 +159,7 @@ MainLoop(){
 	}
 }
 
-AutoCalibrate(){
+AutoDeadzone(){
 	Global mwo_class
 	Global joy_on
 	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
@@ -213,7 +219,7 @@ AutoCalibrate(){
 		
 		Gui, 2:Default
 		GuiControl, , Angle, % ax
-		GuiControl, , SnapshotDebug, % "c1 r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nc2 r:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
+		GuiControl, , SnapshotDebug, % "r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nr:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
 		;GuiControl, +c%c2%, BaseCol
 		;GuiControl, , BaseCol, #
 		Gui, 1:Default
@@ -244,8 +250,8 @@ SetAxis(val, axis){
 	myStick.SetAxisByIndex(val + 16384, axis)
 }
 
-AutoCalibrate:
-	AutoCalibrate()
+AutoDeadzone:
+	AutoDeadzone()
 	return
 
 ThreshChanged:
