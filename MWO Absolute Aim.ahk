@@ -83,7 +83,7 @@ Gui, 1:Show
 Gui, 2:New
 Gui, 2:Add, Text, 0xE xm Section w%SNAPSHOT_WIDTH% h%SNAPSHOT_HEIGHT% hwndSnapshotPreview
 Gui, 2:Add, Edit, xm Section w%SNAPSHOT_WIDTH% center disabled vAngle
-Gui, 2:Add, Text, xm Section vBaseCol, # 
+Gui, 2:Add, Text, xm Section w%SNAPSHOT_WIDTH% center R3 vSnapshotDebug
 
 axis_list_ahk := Array("X","Y","Z","R","U","V")
 
@@ -108,35 +108,57 @@ Gosub CalibrationModeChanged
 
 starting_up := 0
 
-Loop {
-	if (joy_on){
-		ax := GetKeyState(joy_x_str, "P")
-		; ax is 0-100
-		ax *= 327.68
-		ax -= 16384
-		if (ax > 0){
-			sgn := 1
-		} else if (ax < 0){
-			sgn := -1
-		} else {
-			sgn := 0
-		}
-		out := ((abs(ax) * conv_ratio) + LowThresh) * sgn
-		
-		; move off-center
-		out += 16384
-		;tooltip % "Joy: " joy_x_str "`nsgn: " sgn "`nratio: " conv_ratio "`nin: " ax "`nout: " out
-		myStick.SetAxisByIndex(out, 1)
-		
-	}
-	sleep 10
-}
+MainLoop()
 
 ; End Startup Sequence
 Return
 
-AutoCalibrate:
-	; Make sure MWO is running
+MainLoop(){
+	; Helper Objects
+	Global myStick
+	; Var to stop loop doing anything
+	Global joy_on
+	
+	; Nasty globals - remove
+	Global ax
+	Global joy_x_str
+	
+	; Excusable globals
+	Global conv_ratio
+	
+	; GuiControls
+	Global LowThresh
+	
+	Loop {
+		if (joy_on){
+			ax := GetKeyState(joy_x_str, "P")
+			; ax is 0-100
+			ax *= 327.68
+			ax -= 16384
+			if (ax > 0){
+				sgn := 1
+			} else if (ax < 0){
+				sgn := -1
+			} else {
+				sgn := 0
+			}
+			out := ((abs(ax) * conv_ratio) + LowThresh) * sgn
+			
+			; move off-center
+			out += 16384
+			;tooltip % "Joy: " joy_x_str "`nsgn: " sgn "`nratio: " conv_ratio "`nin: " ax "`nout: " out
+			myStick.SetAxisByIndex(out, 1)
+		}
+		Sleep 20
+	}
+}
+
+AutoCalibrate(){
+	Global mwo_class
+	Global joy_on
+	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
+	Global SnapshotPreview, Angle, SnapshotDebug, LowThresh
+	
 	WinGet, mwo_hwnd, ID, ahk_class %mwo_class%
 	if (!mwo_hwnd){
 		msgbox MWO is not running!
@@ -146,7 +168,9 @@ AutoCalibrate:
 	joy_on := 0
 	; Find resolution
 	WinGetPos , X, Y, Width, Height, ahk_class %mwo_class%
-	
+
+	base_snap := ""
+	diff_snap := ""
 	; Define shapshot location - center of screen
 	base_snap := new CGdipSnapshot((width / 2) - (SNAPSHOT_WIDTH / 2),(height / 2) - (SNAPSHOT_HEIGHT / 2),SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
 	diff_snap := new CGdipSnapshot((width / 2) - (SNAPSHOT_WIDTH / 2),(height / 2) - (SNAPSHOT_HEIGHT / 2),SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
@@ -163,32 +187,39 @@ AutoCalibrate:
 	SoundBeep, 500, 250
 	
 	center_stick()
-	ax := 0
 	Send {c}
 	Sleep 2000
-	base_snap.TakeSnapshot()
-	c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
 	SoundBeep, 1000, 250
 
-	ang := 0
+	base_snap.TakeSnapshot()
+	base_snap.TakeSnapshot()
+	c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+	c1_rgb := diff_snap.ToRGB(c1)
+	
+	ax := 0
 	Loop 16384 {
-		ang := A_Index
-		inc_ang(1)
+		ax := A_Index
+		SetAxis(ax, 1)
+		;inc_ang(1)
 		;Sleep 10
 		
 		diff_snap.TakeSnapshot()
+		diff_snap.ShowSnapshot(SnapshotPreview)
+		
 		c2 := diff_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+		c2_rgb := diff_snap.ToRGB(c2)
+		
+		res := diff_snap.Compare(diff_snap.ToRGB(c1), diff_snap.ToRGB(c2), 50)
 		
 		Gui, 2:Default
 		GuiControl, , Angle, % ax
-		GuiControl, +c%c2%, BaseCol
-		GuiControl, , BaseCol, #
-		diff_snap.ShowSnapshot(SnapshotPreview)
+		GuiControl, , SnapshotDebug, % "c1 r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nc2 r:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
+		;GuiControl, +c%c2%, BaseCol
+		;GuiControl, , BaseCol, #
 		Gui, 1:Default
 		
 		;tooltip % ax " - " res
 
-		res := diff_snap.Compare(diff_snap.ToRGB(c1), diff_snap.ToRGB(c2))
 		if (!res){
 			break
 		}
@@ -196,13 +227,25 @@ AutoCalibrate:
 		;Sleep 10
 	}
 	
-	if (ang){
-		GuiControl, , LowThresh, % ang
+	if (ax){
+		GuiControl, , LowThresh, % ax
 		Gosub, ThreshChanged
+		Soundbeep
 	}
 	
 	Gui, 2:Hide
 	joy_on := 1
+	return
+
+}
+
+SetAxis(val, axis){
+	global myStick
+	myStick.SetAxisByIndex(val + 16384, axis)
+}
+
+AutoCalibrate:
+	AutoCalibrate()
 	return
 
 ThreshChanged:
