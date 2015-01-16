@@ -45,8 +45,15 @@ MWO Setup:
 		
 */
 #SingleInstance, force
+SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
 #include <CvJoyInterface>
+#include <CGdipSnapshot>
 
+SNAPSHOT_WIDTH := 100
+SNAPSHOT_HEIGHT := 100
+
+run_as_admin()
+mwo_class := "CryENGINE"
 starting_up := 1
 
 default_low_thresh := 2460
@@ -54,22 +61,29 @@ default_high_thresh := 12314
 ;default_low_thresh := 0
 ;default_high_thresh := 0
 
-Gui, Add, Text, xm ym Section, Low Threshold
-Gui, Add, Edit, vLowThresh gThreshChanged w50 ys-3, % default_low_thresh
-Gui, Add, Text, xm Section, High Threshold
-Gui, Add, Edit, vHighThresh gThreshChanged w50 ys-3, % default_high_thresh
-Gui, Add, Text, xm Section, Small Step Size
-Gui, Add, Edit, vSmallStep gStepSizeChanged w50 ys-3, 1
-Gui, Add, Text, xm Section, High Threshold
-Gui, Add, Edit, vBigStep gStepSizeChanged w50 ys-3, 100
-Gui, Add, CheckBox, xm vCalibrationMode gCalibrationModeChanged, Calibration Mode
-Gui, Add, Text, xm Section, Joystick ID
-Gui, Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
-Gui, Add, Text, xm Section, Joystick X Axis
-Gui, Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
-Gui, Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
-Gui, Show
+Gui, 1:New
+Gui, 1:Default
+Gui, 1:Add, Text, xm ym Section, Low Threshold
+Gui, 1:Add, Edit, vLowThresh gThreshChanged w50 ys-3, % default_low_thresh
+Gui, 1:Add, Text, xm Section, High Threshold
+Gui, 1:Add, Edit, vHighThresh gThreshChanged w50 ys-3, % default_high_thresh
+Gui, 1:Add, Text, xm Section, Small Step Size
+Gui, 1:Add, Edit, vSmallStep gStepSizeChanged w50 ys-3, 1
+Gui, 1:Add, Text, xm Section, High Threshold
+Gui, 1:Add, Edit, vBigStep gStepSizeChanged w50 ys-3, 100
+Gui, 1:Add, CheckBox, xm vCalibrationMode gCalibrationModeChanged, Calibration Mode
+Gui, 1:Add, Text, xm Section, Joystick ID
+Gui, 1:Add, DDL, vStickID gStickChanged w50 ys-3, 1|2||3|4|5|6|7|8|9|10|11|12|13|14|15|16
+Gui, 1:Add, Text, xm Section, Joystick X Axis
+Gui, 1:Add, DDL, vStickXAxis gStickChanged w50 ys-3, 1||2|3|4|5|6|7|8
+Gui, 1:Add, Text, xm Section, Hotkeys:`nF5: Calibration Mode On/Off`nF6: Set Low Threshhold`nF7: Set High Threshold`nF8: Center`nF9/F10: Small Step Low/High`nF11/F12: Large Step Low/High
+Gui, 1:Add, Button, xm Section gAutoCalibrate, Auto Calibrate
+Gui, 1:Show
 
+Gui, 2:New
+Gui, 2:Add, Text, 0xE xm Section w%SNAPSHOT_WIDTH% h%SNAPSHOT_HEIGHT% hwndSnapshotPreview
+Gui, 2:Add, Edit, xm Section w%SNAPSHOT_WIDTH% center disabled vAngle
+Gui, 2:Add, Text, xm Section vBaseCol, # 
 
 axis_list_ahk := Array("X","Y","Z","R","U","V")
 
@@ -94,7 +108,6 @@ Gosub CalibrationModeChanged
 
 starting_up := 0
 
-
 Loop {
 	if (joy_on){
 		ax := GetKeyState(joy_x_str, "P")
@@ -112,8 +125,7 @@ Loop {
 		
 		; move off-center
 		out += 16384
-		
-		;tooltip % "sgn: " sgn "`nratio: " conv_ratio "`nin: " ax "`nout: " out
+		;tooltip % "Joy: " joy_x_str "`nsgn: " sgn "`nratio: " conv_ratio "`nin: " ax "`nout: " out
 		myStick.SetAxisByIndex(out, 1)
 		
 	}
@@ -123,9 +135,79 @@ Loop {
 ; End Startup Sequence
 Return
 
+AutoCalibrate:
+	; Make sure MWO is running
+	WinGet, mwo_hwnd, ID, ahk_class %mwo_class%
+	if (!mwo_hwnd){
+		msgbox MWO is not running!
+		return
+	}
+
+	joy_on := 0
+	; Find resolution
+	WinGetPos , X, Y, Width, Height, ahk_class %mwo_class%
+	
+	; Define shapshot location - center of screen
+	base_snap := new CGdipSnapshot((width / 2) - (SNAPSHOT_WIDTH / 2),(height / 2) - (SNAPSHOT_HEIGHT / 2),SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
+	diff_snap := new CGdipSnapshot((width / 2) - (SNAPSHOT_WIDTH / 2),(height / 2) - (SNAPSHOT_HEIGHT / 2),SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
+
+	x := (x + width) - (SNAPSHOT_WIDTH + 40)
+	y := (y + height) - (SNAPSHOT_HEIGHT + 200)
+	
+	; Show preview window at bottom right of screen
+	Gui, 2:+AlwaysOnTop
+	Gui, 2:Show, x%x% y%y%
+	WinActivate, ahk_class %mwo_class%
+	
+	; Do the calibration
+	SoundBeep, 500, 250
+	
+	center_stick()
+	ax := 0
+	Send {c}
+	Sleep 2000
+	base_snap.TakeSnapshot()
+	c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+	SoundBeep, 1000, 250
+
+	ang := 0
+	Loop 16384 {
+		ang := A_Index
+		inc_ang(1)
+		;Sleep 10
+		
+		diff_snap.TakeSnapshot()
+		c2 := diff_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+		
+		Gui, 2:Default
+		GuiControl, , Angle, % ax
+		GuiControl, +c%c2%, BaseCol
+		GuiControl, , BaseCol, #
+		diff_snap.ShowSnapshot(SnapshotPreview)
+		Gui, 1:Default
+		
+		;tooltip % ax " - " res
+
+		res := diff_snap.Compare(diff_snap.ToRGB(c1), diff_snap.ToRGB(c2))
+		if (!res){
+			break
+		}
+
+		;Sleep 10
+	}
+	
+	if (ang){
+		GuiControl, , LowThresh, % ang
+		Gosub, ThreshChanged
+	}
+	
+	Gui, 2:Hide
+	joy_on := 1
+	return
+
 ThreshChanged:
 	;soundbeep
-	Gui, Submit, NoHide
+	Gui, 1:Submit, NoHide
 	conv_ratio := ( HighThresh - LowThresh) / 16384
 	return
 
@@ -137,7 +219,7 @@ CalibrationModeChanged:
 			soundbeep 500, 500
 		}
 	}
-	Gui, Submit, NoHide
+	Gui, 1:Submit, NoHide
 	joy_on := !CalibrationMode
 	if (!joy_on){
 		GoSub, CenterStick
@@ -146,12 +228,12 @@ CalibrationModeChanged:
 
 StickChanged:
 	;soundbeep
-	Gui, Submit, NoHide
+	Gui, 1:Submit, NoHide
 	joy_x_str := StickID "Joy" axis_list_ahk[StickXAxis]
 	return
 	
 StepSizeChanged:
-	Gui, Submit, NoHide
+	Gui, 1:Submit, NoHide
 	return
 
 set_ratio(){
@@ -160,6 +242,14 @@ set_ratio(){
 	
 	conv_ratio := ( high_thresh - low_thresh) / 16384
 	;msgbox % conv_ratio
+}
+
+center_stick(){
+	global CalibrationMode, ax, myStick
+	if (CalibrationMode){
+		ax := 0
+		myStick.SetAxisByIndex(16384, 1)
+	}
 }
 
 inc_ang(amt){
@@ -188,23 +278,23 @@ dec_ang(amt){
 
 show_ang(){
 	global ax
-	tooltip % ax
+	;tooltip % ax
 }
 
 
 ;F5: Calibrate
-f5::
+~f5::
 	GuiControl, , CalibrationMode, % !CalibrationMode
 	Gosub, CalibrationModeChanged
 	return
 
-f5 up::
+~f5 up::
 	return
 
 
 
 ; F6: Set Low Threshold
-F6::
+~F6::
 	if (CalibrationMode){
 		SoundBeep
 		GuiControl,, LowThresh, % abs(ax)
@@ -212,65 +302,62 @@ F6::
 	return
 
 
-F6 up::
+~F6 up::
 	return
 
 
 ; F7: Set High Threshold
-F7::
+~F7::
 	if (CalibrationMode){
 		SoundBeep
 		GuiControl,, HighThresh, % abs(ax)
 	}
 	return
 
-F7 up::
+~F7 up::
 	return
 
 ; F8: Center
-F8::
+~F8::
 CenterStick:
-	if (CalibrationMode){
-		ax := 0
-		myStick.SetAxisByIndex(16384, 1)
-	}
+	center_stick()
 	return
 
-F8 up::
+~F8 up::
 	return
 
 ; F9: Small Step Down
-F9::
+~F9::
 	if (CalibrationMode){
 		dec_ang(SmallStep)
 	}
 	return
 
-F9 up::
+~F9 up::
 	return
 
 ; F19: Small Step Up
-F10::
+~F10::
 	if (CalibrationMode){
 		inc_ang(SmallStep)
 	}
 	Return
 
-F10 up::
+~F10 up::
 	Return
 
 ; F11: Big Step Down
-F11::
+~F11::
 	if (CalibrationMode){
 		dec_ang(BigStep)
 	}
 	return
 
-f11 up::
+~f11 up::
 	return
 
 ; F12: Big Step Up
-F12::
+~F12::
 	if (CalibrationMode){
 		inc_ang(BigStep)
 	}
@@ -278,3 +365,14 @@ F12::
 
 GuiClose:
 	ExitApp
+	
+run_as_admin(){
+	Global 0
+	IfEqual, A_IsAdmin, 1, Return 0
+	Loop, %0% {
+		params .= A_Space . %A_Index%
+	}
+	DllCall("shell32\ShellExecute" (A_IsUnicode ? "":"A"),uint,0,str,"RunAs",str,(A_IsCompiled ? A_ScriptFullPath
+		: A_AhkPath),str,(A_IsCompiled ? "": """" . A_ScriptFullPath . """" . A_Space) params,str,A_WorkingDir,int,1)
+	ExitApp
+}
