@@ -66,16 +66,26 @@ global SNAPSHOT_GUI_HEIGHT := 200
 
 mwo_class := "CryENGINE"
 starting_up := 1
+calib_current_axis := "x"
+calib_current_speed := "fast"
+calib_current_x := 0
+calib_current_y := 0
+calib_current_lohi := "low"
 
 ADHD := new ADHDLib()
 ADHD.config_about({name: "MWO Absolute Aim", version: "1.0", author: "evilC", link: "<a href=""https://github.com/evilC/MWO-Absolute-Aim"">Homepage</a> / <a href=""http://mwomercs.com/forums/topic/186302"">Forum Thread</a>"})
 
-ADHD.config_size(GUI_WIDTH + 20, 300)
+ADHD.config_size(GUI_WIDTH + 20, 320)
 ADHD.config_event("option_changed", "option_changed_hook")
-ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
-ADHD.config_hotkey_add({uiname: "Auto Twist Limit", subroutine: "AutoTwistLimit"})
+;ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
+;ADHD.config_hotkey_add({uiname: "Auto Twist Limit", subroutine: "AutoTwistLimit"})
 ADHD.config_hotkey_add({uiname: "MWO Bind X", subroutine: "MWOBindX"})
 ADHD.config_hotkey_add({uiname: "MWO Bind Y", subroutine: "MWOBindY"})
+
+ADHD.config_hotkey_add({uiname: "Calibration Mode", subroutine: "CalibModeToggle"})
+ADHD.config_hotkey_add({uiname: "Axis Select", subroutine: "CalibAxisSelect"})
+ADHD.config_hotkey_add({uiname: "Toggle Low / High", subroutine: "CalibAxisLoHi"})
+ADHD.config_hotkey_add({uiname: "Axis Set", subroutine: "CalibAxisSet"})
 
 axis_list_ahk := Array("X","Y","Z","R","U","V")
 axis_to_index := {x: 1, y: 2}
@@ -166,6 +176,8 @@ MainLoop(){
 	; GuiControls
 	Global LowThreshX, LowThreshY, HighThreshX, HighThreshY
 	
+	Global calib_current_x, calib_current_y, calib_current_axis
+	
 	Loop {
 		if (joy_on){
 			ax_x := GetKeyState(joy_x_str, "P")
@@ -200,6 +212,29 @@ MainLoop(){
 			;tooltip % "X: " joy_x_str "`nsgn: " sgn_x "`nratio: " conv_ratio_x "`nin: " ax_x "`nout: " out_x "`n`nY: " joy_y_str "`nsgn: " sgn_y "`nratio: " conv_ratio_y "`nin: " ax_y "`nout: " out_y
 			myStick.SetAxisByIndex(out_x, 1)
 			myStick.SetAxisByIndex(out_y, 2)
+		} else {
+			; calibration mode
+			SetAxisByName(calib_current_x,"x")
+			SetAxisByName(calib_current_y * -1,"y")
+			
+			; Convert 0 -> 100 scale to -1 -> +1 scale
+			xin := round((((GetKeyState(joy_x_str) / 100) * 2) - 1), 2)
+			yin := round((((GetKeyState(joy_y_str) / 100) * 2) - 1), 2)
+			;invert y
+			yin *= -1
+			
+			if (calib_current_axis = "x" && abs(xin)){
+				calib_current_x += (xin * 5)
+				calib_current_x := round(calib_current_x,0)
+			}
+
+			if (calib_current_axis = "y" && abs(yin)){
+				calib_current_y += (yin * 5)
+				calib_current_y := round(calib_current_y,0)
+			}
+
+			;Tooltip % xin ", " yin
+			Tooltip % calib_current_x ", " calib_current_y
 		}
 		Sleep 20
 	}
@@ -774,5 +809,77 @@ AutoTwistLimit:
 		;msgbox Done.
 	}
 	return
+
+CalibAxisSelect:
+	if (calib_current_axis = "x"){
+		calib_current_axis := "y"
+	} else {
+		calib_current_axis := "x"
+	}
+	Gosub, CalibModeChanged
+	;TTS(calib_current_axis)
+	return
+
+CalibAxisLoHi:
+	if (calib_current_lohi = "low"){
+		calib_current_lohi := "high"
+	} else {
+		calib_current_lohi := "low"
+	}
+	Gosub, CalibModeChanged
+	;TTS(calib_current_lohi)
+	return
+	
+CalibAxisSet:
+	if (calib_current_axis = "x"){
+		if (calib_current_lohi = "low"){
+			GuiControl, , LowThreshX, % calib_current_x
+		} else {
+			GuiControl, , HighThreshX, % calib_current_x
+		}
+	} else {
+		if (calib_current_lohi = "low"){
+			GuiControl, , LowThreshY, % calib_current_y
+		} else {
+			GuiControl, , HighThreshY, % calib_current_y
+		}
+	}
+	TTS("Set: " calib_current_axis ": " calib_current_lohi) 
+	return
+	
+CalibModeToggle:
+	joy_on := !joy_on
+	TTS(joy_on ? "Run" : "Calibrate")
+	Gosub, CalibModeChanged
+	return
+
+CalibModeChanged:
+	; remove tooltips
+	Tooltip
+	if (calib_current_lohi = "high"){
+		if (calib_current_axis = "x"){
+			calib_current_x := AutoCalibStartTLX
+			calib_current_y := 0
+		} else {
+			calib_current_x := 0
+			calib_current_y := AutoCalibStartTLY
+		}
+	} else {
+		if (calib_current_axis = "x"){
+			calib_current_x := AutoCalibStartDZ
+			calib_current_y := 0
+		} else {
+			calib_current_x := 0
+			calib_current_y := AutoCalibStartDZ
+		}
+	}
+	if (!joy_on){
+		TTS(calib_current_axis ": " calib_current_lohi)
+	}
+	return
+
+TTS(str){
+	ComObjCreate("SAPI.SpVoice").Speak(str)
+}
 
 #include <ADHDlib>
