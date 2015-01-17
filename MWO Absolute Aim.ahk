@@ -278,8 +278,6 @@ AutoCalibrate(hilo, axis){
 	; Min def: Minimum deflection. Towards the center.
 	; Max def: Maximum deflection. Towards the right if X, Towards up if Y. (MUST be UP! Map covers arm reticule line if you use bottom!)
 	
-	base_snap := new CGdipSnapshot((game_width / 2) - (SNAPSHOT_WIDTH / 2), (game_height / 2) - (SNAPSHOT_HEIGHT / 2), SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT)
-
 	if (hilo == "l"){
 		; Find Low Threshold (Deadzone)
 		; 1) Set stick to min def.
@@ -288,16 +286,16 @@ AutoCalibrate(hilo, axis){
 		
 		GuiControl, , Angle, % "Setting up..."
 		Soundbeep, 500
-		
+
 		SetAxisByName(0,"x")
 		SetAxisByName(0,"y")
-		;Sleep % big_move_sleep
 		
 		; Wait for pip to appear at center
 		
 		GuiControl, , Angle, % "Waiting for view to settle"
 		Sleep % big_move_sleep
 
+		base_snap := new CGdipSnapshot((game_width / 2) - (SNAPSHOT_WIDTH / 2), (game_height / 2) - (SNAPSHOT_HEIGHT / 2), SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT)
 		base_snap.TakeSnapshot()
 		base_snap.ShowSnapshot(SnapshotPreview)
 		orig_rgb := GetCenterRGB(base_snap)
@@ -343,16 +341,16 @@ AutoCalibrate(hilo, axis){
 		; base_snap should now be centered on a pixel which will change from HUD colour to non-HUD colour (or vice versa) when axis moves
 		stick_val := AutoCalibStartDZ
 		
-		Loop % 16384 - AutoCalibStartDZ {
+		Loop % 16384 - stick_val {
 			if (!WinActive("ahk_class " mwo_class)){
 				soundbeep, 500
 				return 0
 			}
-			if (hilo = "h"){
-				SetAxisByName(stick_val * -1,axis)
-			} else {
+			;if (hilo = "h"){
+			;	SetAxisByName(stick_val * -1,axis)
+			;} else {
 				SetAxisByName(stick_val,axis)
-			}
+			;}
 			;Sleep % small_move_sleep
 			base_snap.TakeSnapshot()
 			base_snap.ShowSnapshot(SnapshotPreview)
@@ -379,10 +377,71 @@ AutoCalibrate(hilo, axis){
 		; This is way more complicated, as we have to detect arm motion also, and support lateral / vertical only arm motion mechs.
 		; Procedure is:
 		; 1) Move the stick to max def
-		;    if we have arm motion in that direction, we need to find the HUD coloured pixel at the max-def edge of the O
-		;    If we do not have arm motion in that direction, we need to find the HUD coloured pixel on the max-def edge of the +
-		; 2) Once we have that pixel, move the stick back towards min def until we see the pixel go from HUD colour to something else. 
+		; 2) Check pixel 3 up and right to get colour
+		; 3) Move stick until colour changes
+
+		GuiControl, , Angle, % "Setting up..."
+		Soundbeep, 500
 		
+		if (axis = "x"){
+			SetAxisByName(16384,"x")
+			SetAxisByName(0,"y")
+		} else {
+			SetAxisByName(0,"x")
+			SetAxisByName(-16384,"y")
+		}
+		;Sleep % big_move_sleep
+		
+		; Wait for pip to appear at center
+		
+		GuiControl, , Angle, % "Waiting for view to settle"
+		Sleep % big_move_sleep
+
+		base_snap := new CGdipSnapshot((game_width / 2) - (SNAPSHOT_WIDTH / 2), (game_height / 2) - (SNAPSHOT_HEIGHT / 2), SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT)
+		base_snap.Coords.x -= 3
+		base_snap.Coords.y -= 3
+		base_snap.TakeSnapshot()
+		base_snap.ShowSnapshot(SnapshotPreview)
+		orig_rgb := GetCenterRGB(base_snap)
+
+		; base_snap should now be centered on a pixel which will change from HUD colour to non-HUD colour (or vice versa) when axis moves
+		if (axis = "x"){
+			stick_val := AutoCalibStartTLX
+		} else {
+			stick_val := AutoCalibStartTLY
+		}
+		
+		Loop % 16384 - stick_val {
+			if (!WinActive("ahk_class " mwo_class)){
+				soundbeep, 500
+				return 0
+			}
+			SetAxisByName(stick_val, axis)
+			;Sleep % small_move_sleep
+			base_snap.TakeSnapshot()
+			base_snap.ShowSnapshot(SnapshotPreview)
+			center_rgb := GetCenterRGB(base_snap)
+			;pixels_match := base_snap.Compare(hud_dim_rgb, center_rgb, main_tol)
+			pixels_match := base_snap.Compare(orig_rgb, center_rgb, main_tol)
+			GuiControl, , Angle, % "Moving Stick " axis " : " round(stick_val)
+			GuiControl, , SnapshotDebug, % "HUD = r:" hud_dim_rgb.r " g:" hud_dim_rgb.g " b:" hud_dim_rgb.b "`nCurrent = r:" center_rgb.r " g:" center_rgb.g " b:" center_rgb.b "`nSame? " pixels_match
+			if (!pixels_match){
+				;msgbox % "Thresh Found: " stick_val
+				break
+			}
+			if (hilo = "h"){
+				stick_val--
+			} else {
+				stick_val++
+			}
+			; Safety
+			if (stick_val < 0 || stick_val > 16384){
+				msgbox Stick went above outside 0-16384 error
+				break
+			}
+		}
+
+		return 0
 	}
 	
 	return 1
