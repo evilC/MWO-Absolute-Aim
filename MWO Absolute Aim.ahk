@@ -66,7 +66,7 @@ starting_up := 1
 ADHD := new ADHDLib()
 ADHD.config_about({name: "MWO Absolute Aim", version: "1.0", author: "evilC", link: "<a href=""https://github.com/evilC/MWO-Absolute-Aim"">Homepage</a> / <a href=""http://mwomercs.com/forums/topic/186302"">Forum Thread</a>"})
 
-ADHD.config_size(GUI_WIDTH + 20, 240)
+ADHD.config_size(GUI_WIDTH + 20, 300)
 ADHD.config_event("option_changed", "option_changed_hook")
 ADHD.config_hotkey_add({uiname: "Auto Deadzone", subroutine: "AutoDeadzone"})
 ADHD.config_hotkey_add({uiname: "Auto Twist Limit", subroutine: "AutoTwistLimit"})
@@ -105,10 +105,12 @@ Gui, Add, Text, ys Section, X Axis
 ADHD.gui_add("DropDownList", "StickXAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "1")
 Gui, Add, Text, ys Section, Y Axis
 ADHD.gui_add("DropDownList", "StickYAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "2")
-Gui, Add, Text, xm yp+40 Section, Auto Calib Start DZ
-ADHD.gui_add("Edit", "AutoCalibStartDZ", "w50 h20 ys-3", 0, 0)
-Gui, Add, Text, ys Section, Auto Calib Start Twist Limit
-ADHD.gui_add("Edit", "AutoCalibStartTL", "w50 h20 ys-3", 0, 0)
+Gui, Add, Text, xm yp+40 Section, Auto Calib Start Low
+ADHD.gui_add("Edit", "AutoCalibStartDZ", "w40 h20 ys-3", 0, 0)
+Gui, Add, Text, xm yp+40 Section, Auto Calib Start High (X)
+ADHD.gui_add("Edit", "AutoCalibStartTLX", "w40 h20 ys-3", 0, 16384)
+Gui, Add, Text, ys Section, Auto Calib Start High (Y)
+ADHD.gui_add("Edit", "AutoCalibStartTLY", "w40 h20 ys-3", 0, 16384)
 
 ADHD.finish_startup()
 
@@ -145,7 +147,6 @@ MainLoop(){
 	; Var to stop loop doing anything
 	Global joy_on
 	
-	; Nasty globals - remove
 	Global ax
 	Global joy_x_str, joy_y_str
 	
@@ -194,45 +195,85 @@ MainLoop(){
 	}
 }
 
+ActivateCalibMode(){
+	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
+	Global mwo_class
+	Global joy_on
+	
+	WinGet, mwo_hwnd, ID, ahk_class %mwo_class%
+	if (!mwo_hwnd){
+		msgbox MWO is not running!
+		return 0
+	}
+
+	WinActivate, ahk_class %mwo_class%
+	Sleep 1000
+
+	; Find resolution
+	WinGetPos , X, Y, Width, Height, ahk_class %mwo_class%
+	x := (x + width) - (SNAPSHOT_WIDTH + 40)
+	y := (y + height) - (SNAPSHOT_HEIGHT + 200)
+
+	
+	; Show preview window at bottom right of screen
+	Gui, 2:+AlwaysOnTop
+	Gui, 2:Show, x%x% y%y%
+
+	WinActivate, ahk_class %mwo_class%
+	joy_on := 0
+	return 1
+}
+
+DeActivateCalibMode(){
+	Global joy_on
+	Gui, 2:Hide
+	joy_on := 1
+	
+}
+
 AutoCalibrate(hilo, axis){
 	Global mwo_class
 	Global joy_on
 	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
-	Global SnapshotPreview, Angle, SnapshotDebug, AutoCalibStartDZ, AutoCalibStartTL, SnapshotDebug
+	Global SnapshotPreview, Angle, SnapshotDebug, AutoCalibStartDZ, AutoCalibStartTLX, AutoCalibStartTLY, SnapshotDebug
 	;Global LowThreshX
-	
-	Gui, 2:Default
 
-	WinGet, mwo_hwnd, ID, ahk_class %mwo_class%
-	if (!mwo_hwnd){
-		msgbox MWO is not running!
+	main_tol := 50
+	reticule_tol := 50
+	reticule_rewind_tol := 20
+	
+	hud_dim_col := {r: 197, g: 167, b: 91}
+	hud_bright_col := {r: 242, g: 178, b: 67}
+
+	if (!WinActive("ahk_class " mwo_class)){
+		soundbeep, 500
 		return
 	}
 
-	joy_on := 0
 	
+	move_sleep := 3000
+	Gui, 2:Default
+
 	; Find resolution
 	WinGetPos , X, Y, Width, Height, ahk_class %mwo_class%
-
 	base_snap := ""
 	diff_snap := ""
 	; Define shapshot location - center of screen
 	base_snap := new CGdipSnapshot((width / 2) - (SNAPSHOT_WIDTH / 2),(height / 2) - (SNAPSHOT_HEIGHT / 2),SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
 	diff_snap := new CGdipSnapshot((width / 2) - (SNAPSHOT_WIDTH / 2),(height / 2) - (SNAPSHOT_HEIGHT / 2),SNAPSHOT_WIDTH,SNAPSHOT_HEIGHT)
 
-	x := (x + width) - (SNAPSHOT_WIDTH + 40)
-	y := (y + height) - (SNAPSHOT_HEIGHT + 200)
-	
-	; Show preview window at bottom right of screen
-	Gui, 2:+AlwaysOnTop
-	Gui, 2:Show, x%x% y%y%
-	WinActivate, ahk_class %mwo_class%
+	;x := (x + width) - (SNAPSHOT_WIDTH + 40)
+	;y := (y + height) - (SNAPSHOT_HEIGHT + 200)
 	
 	; Do the calibration
 	SoundBeep, 500, 250
 	
 	if (hilo){
-		max := 16384 - AutoCalibStartTL
+		if (axis = 1){
+			max := AutoCalibStartTLX
+		} else {
+			max := AutoCalibStartTLY
+		}
 	} else {
 		max := 16384 - AutoCalibStartDZ
 	}
@@ -248,7 +289,7 @@ AutoCalibrate(hilo, axis){
 		}
 		SetAxis(ax,axis)
 
-		Sleep 3000
+		Sleep % move_sleep
 		SoundBeep, 1000, 250
 
 	} else {
@@ -261,77 +302,131 @@ AutoCalibrate(hilo, axis){
 		}
 		SetAxis(ax,axis)
 		
-		msgbox HERE
-
 		Send {c}
-		Sleep 3000
+		Sleep % move_sleep
 		SoundBeep, 1000, 250
 	}
 
+	;base_snap.TakeSnapshot()
 	base_snap.TakeSnapshot()
-	base_snap.TakeSnapshot()
+	base_snap.SaveSnapshot("base.png")
 	c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
 	c1_rgb := diff_snap.ToRGB(c1)
-	c2_rgb := {r: 205, g: 177, b: 102}
-	tol := 50
-	step_size := 1
+	
+	;msgbox % "r: " c1_rgb.r "/ g: " c1_rgb.g " / b: " c1_rgb.b
+		
+	;c2_rgb := {r: 205, g: 177, b: 102}
+	c2_rgb := {r: 197, g: 167, b: 91}
+	
+	;c1_rgb := c2_rgb
 	x := (width / 2) - (SNAPSHOT_WIDTH / 2)
 	y := (height / 2) - (SNAPSHOT_HEIGHT / 2)
 
+	if (hilo && (axis = 2)){
+			step_size := -1
+	} else {
+		step_size := 1
+	}
+
+	; When finding the high threshold, we have to find the end of the arm reticule (the 'O' not the '+') ...
 	if (hilo){
-		if (axis){
+		; c2 is the colour of the current pixel being examined
+		c2 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+		c2_rgb := base_snap.ToRGB(c2)
+
+		if (axis = 1){
 			; x
-			reticule := x
-			reticule_max := SNAPSHOT_WIDTH
+			reticule := base_snap.Coords.x
+			reticule_max := width
 		} else {
-			reticule := y
-			reticule_max := SNAPSHOT_HEIGHT
+			; y
+			reticule := base_snap.Coords.y
+			reticule_max := height
+			;msgbox % reticule
 		}
-		if (diff_snap.Compare(c1_rgb, c2_rgb, tol)){
-			res := diff_snap.Compare(c1_rgb, c2_rgb, tol)
-			while (res && (reticule < reticule_max)){
-				reticule += step_size
-				if (axis == 1){
-					base_snap.Coords.x := reticule
-				} else {
-					base_snap.Coords.y := reticule
-				}
+		res := ( diff_snap.Compare(hud_dim_col, c2_rgb, reticule_tol) || diff_snap.Compare(hud_bright_col, c2_rgb, reticule_tol))
+		while (res && (reticule < reticule_max)){
+			if (!WinActive("ahk_class " mwo_class)){
+				soundbeep, 500
+				return
+			}
+			reticule += step_size
+			if (axis == 1){
+				base_snap.Coords.x := reticule
+			} else {
+				;msgbox % "S: " base_snap.Coords.x
+				base_snap.Coords.y := reticule
+			}
+			base_snap.TakeSnapshot()
+			base_snap.ShowSnapshot(SnapshotPreview)
+			
+			; c2 is the colour of the current pixel being examined
+			c2 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+			c2_rgb := base_snap.ToRGB(c2)
+			
+			; make sure res is calculated the same way here as in the start of the while()
+
+			res := ( diff_snap.Compare(hud_dim_col, c2_rgb, reticule_tol) || diff_snap.Compare(hud_bright_col, c2_rgb, reticule_tol))
+			GuiControl, , Angle, % "Find reticule: " round(reticule)
+			GuiControl, , SnapshotDebug, % "HUD: " hud_dim_col.r "/" hud_dim_col.g "/" hud_dim_col.b "`nCurr: " c2_rgb.r "/" c2_rgb.g "/" c2_rgb.b "`nSame? " res
+			if (!res){
+				; Rewind the snapshot position to the end of the last hud_dim_col - timer in testing grounds may cover reticule if at top of screen
+				; Hmm - only need if in testing grounds for a long time?
+				
 				base_snap.TakeSnapshot()
 				base_snap.ShowSnapshot(SnapshotPreview)
-				
-				c1 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
-				c1_rgb := base_snap.ToRGB(c1)
-				
-				res := base_snap.Compare(c1_rgb, c2_rgb, tol)
-				GuiControl, , Angle, % round(x)
-				GuiControl, , SnapshotDebug, % "r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nr:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
-				if (!res){
+				base_snap.SaveSnapshot("ReticuleEndBefore.png")
+
+				while (!diff_snap.Compare(hud_dim_col, c2_rgb, reticule_rewind_tol)){
+					;msgbox % "reticule: " reticule ", one less: " reticule - step_size
 					reticule -= step_size
-					if (axis == 1){
-						x := reticule
+					
+					if (axis = 1){
+						base_snap.Coords.x := reticule
 					} else {
-						y := reticule
+						base_snap.Coords.y := reticule
 					}
-					diff_snap.Coords := {x: x, y: y, w: SNAPSHOT_WIDTH, h:SNAPSHOT_HEIGHT }
+					base_snap.TakeSnapshot()
+					base_snap.ShowSnapshot(SnapshotPreview)
+					c2 := base_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
+					c2_rgb := base_snap.ToRGB(c2)
+				}
+
+				base_snap.SaveSnapshot("ReticuleEndAfter.png")
+
+				if (axis == 1){
+					x := reticule
+					base_snap.Coords.x := reticule
+				} else {
+					y := reticule
+					base_snap.Coords.y := reticule
 				}
 			}
+			; Set position of snapshot so next part can work
+			diff_snap.Coords := base_snap.Coords
+			c1_rgb := c2_rgb
 		}
 	}
 
+	; c1_rgb should now hold rgb values for the center of the reticule - let's see if we can make it change...
 	found := 0
-
-
 	Loop % max {
 		if (!WinActive("ahk_class " mwo_class)){
 			soundbeep, 500
 			return
 		}
 		if (hilo){
-			ax := max - A_Index
+			if (axis = 1){
+				ax := AutoCalibStartTLX - A_Index
+			} else {
+				ax := AutoCalibStartTLY - A_Index
+			}
+			; in Y mode, we want to use up to calibrate, as if we use down, the map covers the reticule
+			SetAxis(ax * -1, axis)
 		} else {
-			ax := (16384 - AutoCalibStartTL) + A_Index
+			ax := AutoCalibStartDZ + A_Index
+			SetAxis(ax, axis)
 		}
-		SetAxis(ax, axis)
 		
 		diff_snap.TakeSnapshot()
 		diff_snap.ShowSnapshot(SnapshotPreview)
@@ -339,11 +434,11 @@ AutoCalibrate(hilo, axis){
 		c2 := diff_snap.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2)
 		c2_rgb := diff_snap.ToRGB(c2)
 		
-		res := diff_snap.Compare(diff_snap.ToRGB(c1), diff_snap.ToRGB(c2), 50)
+		res := diff_snap.Compare(c1_rgb,c2_rgb, main_tol)
 		
 		Gui, 2:Default
 		GuiControl, , Angle, % ax
-		GuiControl, , SnapshotDebug, % "r:" c1_rgb.r " g:" c1_rgb.g " b:" c1_rgb.b "`nr:" c2_rgb.r " g:" c2_rgb.g " b:" c2_rgb.b "`nSame? " res
+		GuiControl, , SnapshotDebug, % "Base: " c1_rgb.r "/" c1_rgb.g "/" c1_rgb.b "`nCurr: " c2_rgb.r "/" c2_rgb.g "/" c2_rgb.b "`nSame? " res
 		Gui, 1:Default
 		
 		;tooltip % ax " - " res
@@ -355,24 +450,27 @@ AutoCalibrate(hilo, axis){
 	}
 
 	if (found){
-		if (hilo){
-			if (axis == 1){
-				GuiControl, , HighThreshX, % ax
+		msgbox, 4,, % "A new value was found of " ax ", Do you want to use it?"
+		ifmsgbox yes
+		{
+			if (hilo){
+				if (axis == 1){
+					GuiControl, , HighThreshX, % ax
+				} else {
+					GuiControl, , HighThreshY, % ax
+				}
 			} else {
-				GuiControl, , HighThreshY, % ax
-			}
-		} else {
-			if (axis == 1){
-				GuiControl, , LowThreshX, % ax
-			} else {
-				GuiControl, , LowThreshY, % ax
+				if (axis == 1){
+					GuiControl, , LowThreshX, % ax
+				} else {
+					GuiControl, , LowThreshY, % ax
+				}
 			}
 		}
-		Soundbeep
+	} else {
+		msgbox Value not found
 	}
 	
-	Gui, 2:Hide
-	joy_on := 1
 	return
 
 }
@@ -410,13 +508,25 @@ MWOBindY:
 	return
 
 AutoDeadzone:
-	AutoCalibrate(0,1)
-	AutoCalibrate(0,2)
+	if (ActivateCalibMode()){
+		; X Axis
+		AutoCalibrate(0,1)
+		; Y Axis
+		AutoCalibrate(0,2)
+		DeActivateCalibMode()
+		msgbox Done.
+	}
 	return
 
 AutoTwistLimit:
-	AutoCalibrate(1,1)
-	AutoCalibrate(1,2)
+	if (ActivateCalibMode()){
+		; X Axis
+		AutoCalibrate(1,1)
+		; Y Axis
+		AutoCalibrate(1,2)
+		DeActivateCalibMode()
+		msgbox Done.
+	}
 	return
 
 #include <ADHDlib>
