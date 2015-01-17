@@ -255,7 +255,8 @@ AutoCalibrate(hilo, axis){
 	static wait_center := 3000
 	static wait_timeout := 5000
 	
-	static main_tol := 100
+	;static main_tol := 50
+	static main_tol := 10
 
 	if (!WinActive("ahk_class " mwo_class)){
 		soundbeep, 500
@@ -277,13 +278,13 @@ AutoCalibrate(hilo, axis){
 	; Min def: Minimum deflection. Towards the center.
 	; Max def: Maximum deflection. Towards the right if X, Towards up if Y. (MUST be UP! Map covers arm reticule line if you use bottom!)
 	
+	base_snap := new CGdipSnapshot((game_width / 2) - (SNAPSHOT_WIDTH / 2), (game_height / 2) - (SNAPSHOT_HEIGHT / 2), SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT)
 
 	if (hilo == "l"){
 		; Find Low Threshold (Deadzone)
-		; DZ likely to be same for all mechs, so to make it easier, you must calibrate DZ in a mech with lateral and vertical arm motion
 		; 1) Set stick to min def.
-		; 2) Find the max-def edge of the O
-		; 3) Move the stick until the pixel is no longer HUD colour
+		; 2) Check the colour of the pixel at the center of the crosshair
+		; 3) Move the stick until the pixel changes colour
 		
 		GuiControl, , Angle, % "Setting up..."
 		Soundbeep, 500
@@ -292,27 +293,23 @@ AutoCalibrate(hilo, axis){
 		SetAxisByName(0,"y")
 		;Sleep % big_move_sleep
 		
-		base_snap := new CGdipSnapshot((game_width / 2) - (SNAPSHOT_WIDTH / 2), (game_height / 2) - (SNAPSHOT_HEIGHT / 2), SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT)
-		base_snap.TakeSnapshot()
-		base_snap.ShowSnapshot(SnapshotPreview)
-		;base_snap.SaveSnapshot("base.png")
-		
 		; Wait for pip to appear at center
 		
-		center_rgb := GetCenterRGB(base_snap)
-		pixels_match := base_snap.Compare(hud_dim_rgb, center_rgb, main_tol)
-		wait_start := A_TickCount
-		max_wait := wait_center + wait_timeout
 		GuiControl, , Angle, % "Waiting for view to settle"
 		Sleep % big_move_sleep
-		
+
+		base_snap.TakeSnapshot()
+		base_snap.ShowSnapshot(SnapshotPreview)
+		orig_rgb := GetCenterRGB(base_snap)
+
+		/*
 		GuiControl, , Angle, % "Finding edge of O reticule"
 		; move away from center pip in case it exists
-			if (axis = "x"){
-				base_snap.Coords[axis] += 3
-			} else {
-				base_snap.Coords[axis] -= 3
-			}
+		if (axis = "x"){
+			base_snap.Coords[axis] += 3
+		} else {
+			base_snap.Coords[axis] -= 3
+		}
 		
 		found := 0
 		
@@ -342,8 +339,8 @@ AutoCalibrate(hilo, axis){
 		;base_snap.SaveSnapshot("moved_" axis ".png")
 		
 		SoundBeep, 1000
-
-		; base_snap should now be centered on a pixel which will change from HUD colour to non-HUD colour when axis moves
+		*/
+		; base_snap should now be centered on a pixel which will change from HUD colour to non-HUD colour (or vice versa) when axis moves
 		stick_val := AutoCalibStartDZ
 		
 		Loop % 16384 - AutoCalibStartDZ {
@@ -360,8 +357,9 @@ AutoCalibrate(hilo, axis){
 			base_snap.TakeSnapshot()
 			base_snap.ShowSnapshot(SnapshotPreview)
 			center_rgb := GetCenterRGB(base_snap)
-			pixels_match := base_snap.Compare(hud_dim_rgb, center_rgb, main_tol)
-			GuiControl, , Angle, % "Moving Stick: " round(stick_val)
+			;pixels_match := base_snap.Compare(hud_dim_rgb, center_rgb, main_tol)
+			pixels_match := base_snap.Compare(orig_rgb, center_rgb, main_tol)
+			GuiControl, , Angle, % "Moving Stick " axis " : " round(stick_val)
 			GuiControl, , SnapshotDebug, % "HUD = r:" hud_dim_rgb.r " g:" hud_dim_rgb.g " b:" hud_dim_rgb.b "`nCurrent = r:" center_rgb.r " g:" center_rgb.g " b:" center_rgb.b "`nSame? " pixels_match
 			if (!pixels_match){
 				;msgbox % "Thresh Found: " stick_val
@@ -381,8 +379,8 @@ AutoCalibrate(hilo, axis){
 		; This is way more complicated, as we have to detect arm motion also, and support lateral / vertical only arm motion mechs.
 		; Procedure is:
 		; 1) Move the stick to max def
-		;    if we have arm motion in that direction, we need to find the HUD coloured pixel at the center of the O
-		;    If we do not have arm motion in that direction, we need to find the HUD coloured pixel on the max def edge of the +
+		;    if we have arm motion in that direction, we need to find the HUD coloured pixel at the max-def edge of the O
+		;    If we do not have arm motion in that direction, we need to find the HUD coloured pixel on the max-def edge of the +
 		; 2) Once we have that pixel, move the stick back towards min def until we see the pixel go from HUD colour to something else. 
 		
 	}
