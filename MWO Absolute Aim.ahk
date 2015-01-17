@@ -391,7 +391,10 @@ AutoCalibrate(hilo, axis){
 			SetAxisByName(-16384,"y")
 		}
 		;Sleep % big_move_sleep
-		
+		if (axis = "x"){
+			sleep 100000
+		}
+		return 0
 		; Wait for pip to appear at center
 		
 		GuiControl, , Angle, % "Waiting for view to settle"
