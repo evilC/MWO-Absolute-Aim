@@ -5,13 +5,16 @@ Proof-of-concept
 
 Requirements
 ============
-EXE version or .ahk (source) version of script:
-   vJoy virtual joystick driver from http://vjoystick.sourceforge.net
+Quick Start:
+   Install vJoy virtual joystick driver from http://vjoystick.sourceforge.net
+   Use the EXE file in the zip
 
-.ahk (source) - ie not the EXE version:
-   AHK from http://ahkscript.org. !!! NOT autohotkey.com !!!
-   AHK-CvJoyInterface.ahk from here: https://github.com/evilC/AHK-CvJoyInterface
-   ADHD from https://github.com/evilC/ADHD-AHK-Dynamic-Hotkeys-for-Dummies
+For coders:
+	Also Download:
+	AHK from http://ahkscript.org. !!! NOT autohotkey.com !!!
+	AHK-CvJoyInterface.ahk from here: https://github.com/evilC/AHK-CvJoyInterface
+	ADHD from https://github.com/evilC/ADHD-AHK-Dynamic-Hotkeys-for-Dummies
+	Then use the AHK version from the zip
 
 MWO Setup:
 	One Time
@@ -50,7 +53,7 @@ MWO Setup:
 */
 #SingleInstance, force
 SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
-#include <CvJoyInterface>
+#include <CvJoyInterface> 
 #include <CGdipSnapshot>
 
 GUI_WIDTH := 350
@@ -102,8 +105,10 @@ Gui, Add, Text, ys Section, X Axis
 ADHD.gui_add("DropDownList", "StickXAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "1")
 Gui, Add, Text, ys Section, Y Axis
 ADHD.gui_add("DropDownList", "StickYAxis", "w50 ys-3 h20 R9", "1|2|3|4|5|6|7|8", "2")
-Gui, Add, Text, xm yp+40 Section, Auto Calibrate Start
-ADHD.gui_add("Edit", "AutoCalibStart", "w50 h20 ys-3", 0, 0)
+Gui, Add, Text, xm yp+40 Section, Auto Calib Start DZ
+ADHD.gui_add("Edit", "AutoCalibStartDZ", "w50 h20 ys-3", 0, 0)
+Gui, Add, Text, ys Section, Auto Calib Start Twist Limit
+ADHD.gui_add("Edit", "AutoCalibStartTL", "w50 h20 ys-3", 0, 0)
 
 ADHD.finish_startup()
 
@@ -193,7 +198,7 @@ AutoCalibrate(hilo, axis){
 	Global mwo_class
 	Global joy_on
 	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
-	Global SnapshotPreview, Angle, SnapshotDebug, AutoCalibStart, SnapshotDebug
+	Global SnapshotPreview, Angle, SnapshotDebug, AutoCalibStartDZ, AutoCalibStartTL, SnapshotDebug
 	;Global LowThreshX
 	
 	Gui, 2:Default
@@ -226,27 +231,40 @@ AutoCalibrate(hilo, axis){
 	; Do the calibration
 	SoundBeep, 500, 250
 	
-	max := 16384 - AutoCalibStart
+	if (hilo){
+		max := 16384 - AutoCalibStartTL
+	} else {
+		max := 16384 - AutoCalibStartDZ
+	}
 	
 	if (hilo){
 		; High - twist limits
 		if (axis = 1){
 			ax := max
+			SetAxis(0,2)
 		} else {
 			ax := max * -1
+			SetAxis(0,1)
 		}
 		SetAxis(ax,axis)
 
-		Sleep 2500
+		Sleep 3000
 		SoundBeep, 1000, 250
 
 	} else {
 		; Low - deadzone
 		ax := 0
+		if (axis = 1){
+			SetAxis(0,2)
+		} else {
+			SetAxis(0,1)
+		}
 		SetAxis(ax,axis)
+		
+		msgbox HERE
 
 		Send {c}
-		Sleep 2500
+		Sleep 3000
 		SoundBeep, 1000, 250
 	}
 
@@ -311,7 +329,7 @@ AutoCalibrate(hilo, axis){
 		if (hilo){
 			ax := max - A_Index
 		} else {
-			ax := AutoCalibStart + A_Index
+			ax := (16384 - AutoCalibStartTL) + A_Index
 		}
 		SetAxis(ax, axis)
 		
@@ -392,12 +410,12 @@ MWOBindY:
 	return
 
 AutoDeadzone:
-	;AutoCalibrate(0,1)
+	AutoCalibrate(0,1)
 	AutoCalibrate(0,2)
 	return
 
 AutoTwistLimit:
-	;AutoCalibrate(1,1)
+	AutoCalibrate(1,1)
 	AutoCalibrate(1,2)
 	return
 
