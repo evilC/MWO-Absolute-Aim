@@ -56,9 +56,13 @@ SetKeyDelay, 0, 50	; MWO does not recognize keys held for <50ms
 #include <CvJoyInterface> 
 #include <CGdipSnapshot>
 
-GUI_WIDTH := 350
-SNAPSHOT_WIDTH := 100
-SNAPSHOT_HEIGHT := 100
+global GUI_MARGIN := 15
+global DOUBLE_GUI_MARGIN := 30
+global GUI_WIDTH := 350
+global SNAPSHOT_WIDTH := 100
+global SNAPSHOT_HEIGHT := 100
+global SNAPSHOT_GUI_WIDTH := 200
+global SNAPSHOT_GUI_HEIGHT := 200
 
 mwo_class := "CryENGINE"
 starting_up := 1
@@ -74,6 +78,8 @@ ADHD.config_hotkey_add({uiname: "MWO Bind X", subroutine: "MWOBindX"})
 ADHD.config_hotkey_add({uiname: "MWO Bind Y", subroutine: "MWOBindY"})
 
 axis_list_ahk := Array("X","Y","Z","R","U","V")
+axis_to_index := {x: 1, y: 2}
+index_to_axis := ["x","y"]
 
 default_low_thresh := 2460
 default_high_thresh := 12314
@@ -115,10 +121,14 @@ ADHD.gui_add("Edit", "AutoCalibStartTLY", "w40 h20 ys-3", 0, 16384)
 ADHD.finish_startup()
 
 Gui, 2:New
-Gui, 2:Add, Text, 0xE xm Section w%SNAPSHOT_WIDTH% h%SNAPSHOT_HEIGHT% hwndSnapshotPreview
-Gui, 2:Add, Edit, xm Section w%SNAPSHOT_WIDTH% center disabled vAngle
-Gui, 2:Add, Text, xm Section w%SNAPSHOT_WIDTH% center R3 vSnapshotDebug
+Gui, 2:Add, Text, xm Section w%SNAPSHOT_GUI_WIDTH% center, Snapshot
+tmpx := GUI_MARGIN + ((SNAPSHOT_Gui_WIDTH - SNAPSHOT_WIDTH) / 2)
+Gui, 2:Add, Text, 0xE x%tmpx% Section w%SNAPSHOT_WIDTH% h%SNAPSHOT_HEIGHT% hwndSnapshotPreview
+Gui, 2:Add, Edit, xm Section w%SNAPSHOT_GUI_WIDTH% center disabled vAngle
+Gui, 2:Add, Text, xm Section w%SNAPSHOT_GUI_WIDTH% R5 vSnapshotDebug
 
+Gui, 2:Show, % "w" SNAPSHOT_GUI_WIDTH + DOUBLE_GUI_MARGIN " h" SNAPSHOT_GUI_HEIGHT + DOUBLE_GUI_MARGIN
+Gui, 2:Hide
 ax := 0
 joy_on := 1
 
@@ -196,7 +206,6 @@ MainLoop(){
 }
 
 ActivateCalibMode(){
-	Global SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT
 	Global mwo_class
 	Global joy_on
 	
@@ -206,13 +215,15 @@ ActivateCalibMode(){
 		return 0
 	}
 
+	joy_on := 0
+
 	WinActivate, ahk_class %mwo_class%
 	Sleep 1000
 
 	; Find resolution
 	WinGetPos , X, Y, Width, Height, ahk_class %mwo_class%
-	x := (x + width) - (SNAPSHOT_WIDTH + 40)
-	y := (y + height) - (SNAPSHOT_HEIGHT + 200)
+	x := (x + width) - (SNAPSHOT_GUI_WIDTH + DOUBLE_GUI_MARGIN + 10)
+	y := (y + height) - (SNAPSHOT_GUI_HEIGHT + DOUBLE_GUI_MARGIN + 80)
 
 	
 	; Show preview window at bottom right of screen
@@ -220,17 +231,164 @@ ActivateCalibMode(){
 	Gui, 2:Show, x%x% y%y%
 
 	WinActivate, ahk_class %mwo_class%
-	joy_on := 0
 	return 1
 }
 
 DeActivateCalibMode(){
 	Global joy_on
 	Gui, 2:Hide
-	joy_on := 1
+	;joy_on := 1
 	
 }
 
+AutoCalibrate(hilo, axis){
+	Global mwo_class
+	Global joy_on
+	Global SnapshotPreview, Angle, SnapshotDebug, AutoCalibStartDZ, AutoCalibStartTLX, AutoCalibStartTLY, SnapshotDebug
+	Global axis_to_index, index_to_axis
+	Global auto_calib_start
+	
+	static hud_dim_rgb := {r: 173, g: 149, b: 87}
+	static hud_bright_rgb := {r: 242, g: 178, b: 67}
+	static big_move_sleep := 3000
+	static small_move_sleep := 10
+	static wait_center := 3000
+	static wait_timeout := 5000
+	
+	static main_tol := 100
+
+	if (!WinActive("ahk_class " mwo_class)){
+		soundbeep, 500
+		return
+	}
+	
+	Gui, 2:Default
+	; Dirty hack - sometimes calib window disappears
+	;Gui, 2:Show
+	;WinActivate, ahk_class %mwo_class%
+	;Sleep, 1000
+	
+	; Get screen size etc
+	WinGetPos , game_x, game_y, game_width, game_height, ahk_class %mwo_class%
+		
+	; Terminology:
+	; O : The Arm crosshair (The one shaped like a O)
+	; + : The Torso crosshair (The one shaped like a +)
+	; Min def: Minimum deflection. Towards the center.
+	; Max def: Maximum deflection. Towards the right if X, Towards up if Y. (MUST be UP! Map covers arm reticule line if you use bottom!)
+	
+	; Procedure:
+	
+	; Find Low Threshold (Deadzone)
+	; 1) Set stick to min def.
+	; 2) Look for the pip / line at the center of the + / o
+	; 3) 
+
+	; Find High Threshold (Twist Limit)
+	; This is way more complicated, as we have to detect arm motion also, and support lateral / vertical only arm motion mechs.
+	; Procedure is:
+	; 1) Move the stick to max def
+	;    if we have arm motion in that direction, we need to find the HUD coloured pixel at the center of the O
+	;    If we do not have arm motion in that direction, we need to find the HUD coloured pixel on the max def edge of the +
+	; 2) Once we have that pixel, move the stick back towards min def until we see the pixel go from HUD colour to something else. 
+
+	if (hilo == "l"){
+		; Find Low Threshold (Deadzone)
+		; 1) Set stick to min def.
+		; 2) find the HUD coloured pixel on the max def edge of the +
+		; 3) 
+		
+		GuiControl, , Angle, % "Setting up..."
+		Soundbeep, 500
+		
+		SetAxisByName(0,"x")
+		SetAxisByName(0,"y")
+		;Sleep % big_move_sleep
+		
+		base_snap := new CGdipSnapshot((game_width / 2) - (SNAPSHOT_WIDTH / 2), (game_height / 2) - (SNAPSHOT_HEIGHT / 2), SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT)
+		base_snap.TakeSnapshot()
+		base_snap.ShowSnapshot(SnapshotPreview)
+		base_snap.SaveSnapshot("base.png")
+		
+		; Wait for pip to appear at center
+		
+		center_rgb := GetCenterRGB(base_snap)
+		pixels_match := base_snap.Compare(hud_dim_rgb, center_rgb, main_tol)
+		wait_start := A_TickCount
+		max_wait := wait_center + wait_timeout
+		GuiControl, , Angle, % "Waiting for view to settle"
+		while (!pixels_match){
+			if (!WinActive("ahk_class " mwo_class)){
+				soundbeep, 500
+				return 0
+			}
+			Sleep 100
+			if (A_TickCount - wait_start > wait_center){
+				GuiControl, , Angle, % "Waiting for center PIP"
+				base_snap.TakeSnapshot()
+				base_snap.ShowSnapshot(SnapshotPreview)
+				center_rgb := GetCenterRGB(base_snap)
+				pixels_match := base_snap.Compare(hud_dim_rgb, center_rgb, main_tol)
+				GuiControl, , SnapshotDebug, % "HUD = r:" hud_dim_rgb.r " g:" hud_dim_rgb.g " b:" hud_dim_rgb.b "`nCurrent = r:" center_rgb.r " g:" center_rgb.g " b:" center_rgb.b "`nSame? " pixels_match
+			}
+			
+			if (A_TickCount - wait_start > max_wait){
+				msgbox Waited too long, exiting...
+				return
+			}
+		}
+		
+		SoundBeep, 1000
+
+		; Pip appeared, start to move stick.
+		stick_val := AutoCalibStartDZ
+		
+		Loop % 16384 - AutoCalibStartDZ {
+			if (!WinActive("ahk_class " mwo_class)){
+				soundbeep, 500
+				return 0
+			}
+
+			SetAxisByName(stick_val,axis)
+			;Sleep % small_move_sleep
+			base_snap.TakeSnapshot()
+			base_snap.ShowSnapshot(SnapshotPreview)
+			center_rgb := GetCenterRGB(base_snap)
+			pixels_match := base_snap.Compare(hud_dim_rgb, center_rgb, main_tol)
+			GuiControl, , Angle, % "Moving Stick: " round(stick_val)
+			GuiControl, , SnapshotDebug, % "HUD = r:" hud_dim_rgb.r " g:" hud_dim_rgb.g " b:" hud_dim_rgb.b "`nCurrent = r:" center_rgb.r " g:" center_rgb.g " b:" center_rgb.b "`nSame? " pixels_match
+			if (!pixels_match){
+				;msgbox % "Thresh Found: " stick_val
+				break
+			}
+			stick_val++
+			; Safety
+			if (stick_val > 16384){
+				msgbox Stick went above 16384 error
+				break
+			}
+		}
+		
+	
+	} else {
+		; Find High Threshold (Twist Limit)
+		; This is way more complicated, as we have to detect arm motion also, and support lateral / vertical only arm motion mechs.
+		; Procedure is:
+		; 1) Move the stick to max def
+		;    if we have arm motion in that direction, we need to find the HUD coloured pixel at the center of the O
+		;    If we do not have arm motion in that direction, we need to find the HUD coloured pixel on the max def edge of the +
+		; 2) Once we have that pixel, move the stick back towards min def until we see the pixel go from HUD colour to something else. 
+	}
+	
+	return 1
+	
+}
+
+GetCenterRGB(var){
+	return var.ToRGB(var.SnapshotGetColor(SNAPSHOT_WIDTH/2, SNAPSHOT_HEIGHT/2))
+}
+
+/*
 AutoCalibrate(hilo, axis){
 	Global mwo_class
 	Global joy_on
@@ -476,7 +634,7 @@ AutoCalibrate(hilo, axis){
 	return
 
 }
-
+*/
 option_changed_hook(){
 	Global conv_ratio_x, conv_ratio_y
 	Global LowThreshX, HighThreshX 
@@ -484,17 +642,24 @@ option_changed_hook(){
 	Global StickID, StickXAxis, StickYAxis
 	Global axis_list_ahk
 	Global joy_x_str, joy_y_str
+	Global AutoCalibStartTLX, AutoCalibStartTLY
+	Global auto_calib_start
 	
 	conv_ratio_x := ( HighThreshX - LowThreshX) / 16384
 	conv_ratio_y := ( HighThreshY - LowThreshY) / 16384
 	joy_x_str := StickID "Joy" axis_list_ahk[StickXAxis]
 	joy_y_str := StickID "Joy" axis_list_ahk[StickYAxis]
-
+	auto_calib_start := {x: AutoCalibStartTLX, y: AutoCalibStartTLY}
 }
 
 SetAxis(val, axis){
 	global myStick
 	myStick.SetAxisByIndex(val + 16384, axis)
+}
+
+SetAxisByName(val, axis){
+	Global axis_to_index
+	SetAxis(val, axis_to_index[axis])
 }
 
 MWOBindX:
@@ -512,22 +677,34 @@ MWOBindY:
 AutoDeadzone:
 	if (ActivateCalibMode()){
 		; X Axis
-		AutoCalibrate(0,1)
+		;AutoCalibrate(0,1)
+		if (AutoCalibrate("l","x")){
+			if (AutoCalibrate("l","y")){
+				msgbox Calibrated.
+			}
+		}
 		; Y Axis
-		AutoCalibrate(0,2)
+		;AutoCalibrate(0,2)
+		;AutoCalibrate("l","y")
 		DeActivateCalibMode()
-		msgbox Done.
+		;msgbox Done.
 	}
 	return
 
 AutoTwistLimit:
 	if (ActivateCalibMode()){
 		; X Axis
-		AutoCalibrate(1,1)
+		;AutoCalibrate(1,1)
+		if (AutoCalibrate("h","x")){
+			if (AutoCalibrate("h","y")){
+				msgbox Calibrated.
+			}
+		}
 		; Y Axis
 		;AutoCalibrate(1,2)
+		;AutoCalibrate("h","y")
 		DeActivateCalibMode()
-		msgbox Done.
+		;msgbox Done.
 	}
 	return
 
