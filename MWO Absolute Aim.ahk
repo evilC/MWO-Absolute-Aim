@@ -238,7 +238,7 @@ AutoCalibrate(hilo, axis){
 	Global SnapshotPreview, Angle, SnapshotDebug, AutoCalibStartDZ, AutoCalibStartTLX, AutoCalibStartTLY, SnapshotDebug
 	;Global LowThreshX
 
-	main_tol := 50
+	main_tol := 10
 	reticule_tol := 50
 	reticule_rewind_tol := 20
 	
@@ -278,6 +278,7 @@ AutoCalibrate(hilo, axis){
 		max := 16384 - AutoCalibStartDZ
 	}
 	
+	; Set initial view
 	if (hilo){
 		; High - twist limits
 		if (axis = 1){
@@ -418,11 +419,12 @@ AutoCalibrate(hilo, axis){
 		if (hilo){
 			if (axis = 1){
 				ax := AutoCalibStartTLX - A_Index
+				SetAxis(ax, axis)
 			} else {
 				ax := AutoCalibStartTLY - A_Index
+				SetAxis(ax * -1, axis)
 			}
 			; in Y mode, we want to use up to calibrate, as if we use down, the map covers the reticule
-			SetAxis(ax * -1, axis)
 		} else {
 			ax := AutoCalibStartDZ + A_Index
 			SetAxis(ax, axis)
@@ -523,7 +525,7 @@ AutoTwistLimit:
 		; X Axis
 		AutoCalibrate(1,1)
 		; Y Axis
-		AutoCalibrate(1,2)
+		;AutoCalibrate(1,2)
 		DeActivateCalibMode()
 		msgbox Done.
 	}
